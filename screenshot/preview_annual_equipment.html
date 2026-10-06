@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>年間推移・設備別分析 - プレビュー</title>
+
+  <!-- Google Fonts: Inter, JetBrains Mono, Noto Sans JP, Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <style>
+    :root {
+      --primary: #0284c7;
+      --primary-dark: #0369a1;
+      --primary-light: #e0f2fe;
+      --secondary: #0f172a;
+      --accent: #38bdf8;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --bg-main: #f8fafc;
+      --bg-card: #ffffff;
+      --border-color: #e2e8f0;
+      --border-light: #f1f5f9;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --text-light: #94a3b8;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      line-height: 1.5;
+      padding: 1.5rem;
+    }
+
+    .app-container { max-width: 1440px; margin: 0 auto; }
+
+    /* Header */
+    .app-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-card);
+      padding: 1.25rem 2rem;
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border-color);
+      margin-bottom: 1.25rem;
+    }
+    .header-logo { display: flex; align-items: center; gap: 1rem; }
+    .logo-icon {
+      font-size: 2rem;
+      background: var(--primary-light);
+      color: var(--primary);
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-md);
+    }
+    .header-logo h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--secondary);
+    }
+    .header-logo p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    /* Navigation */
+    .main-nav {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.25rem;
+      background: #e2e8f0;
+      padding: 0.35rem;
+      border-radius: var(--radius-md);
+      width: fit-content;
+    }
+    .main-nav-btn {
+      padding: 0.6rem 1.25rem;
+      border: none;
+      background: transparent;
+      border-radius: var(--radius-sm);
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s;
+    }
+    .main-nav-btn.active {
+      background: var(--bg-card);
+      color: var(--primary);
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* Toolbar */
+    .toolbar-card {
+      background: var(--bg-card);
+      padding: 1rem 1.5rem;
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border-color);
+      margin-bottom: 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .toolbar-group { display: flex; align-items: center; gap: 0.75rem; }
+    .toolbar-label { font-size: 0.85rem; font-weight: 600; color: var(--text-muted); }
+    .select-input {
+      padding: 0.5rem 2rem 0.5rem 0.75rem;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      background: var(--bg-card);
+      font-size: 0.9rem;
+      color: var(--text-main);
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .pill-group {
+      display: flex;
+      background: #f1f5f9;
+      padding: 3px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-color);
+    }
+    .pill-btn {
+      border: none;
+      background: transparent;
+      padding: 0.4rem 0.85rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .pill-btn.active {
+      background: var(--bg-card);
+      color: var(--primary);
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* KPI Cards */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .kpi-card {
+      background: var(--bg-card);
+      padding: 1.25rem;
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border-color);
+      border-top: 4px solid var(--card-color, var(--primary));
+    }
+    .kpi-label { font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.5rem; }
+    .kpi-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: baseline;
+      gap: 0.35rem;
+    }
+    .kpi-unit { font-size: 0.85rem; font-weight: 500; color: var(--text-muted); }
+    .kpi-sub { font-size: 0.8rem; color: var(--text-light); margin-top: 0.35rem; }
+
+    /* Chart Grid */
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 2fr 1.2fr;
+      gap: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    @media (max-width: 1024px) {
+      .chart-grid { grid-template-columns: 1fr; }
+    }
+    .chart-card {
+      background: var(--bg-card);
+      padding: 1.25rem;
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+    }
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid var(--border-light);
+      padding-bottom: 0.75rem;
+    }
+    .chart-title { font-size: 1rem; font-weight: 700; color: var(--secondary); }
+    .chart-container { position: relative; height: 360px; width: 100%; }
+
+    /* Table */
+    .table-card {
+      background: var(--bg-card);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border-color);
+      overflow: hidden;
+      margin-bottom: 2rem;
+    }
+    .table-container { overflow-x: auto; max-width: 100%; }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      white-space: nowrap;
+    }
+    .data-table th, .data-table td {
+      padding: 0.65rem 0.85rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .data-table th {
+      background: #f8fafc;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border-color);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .font-tabular {
+      font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace !important;
+      font-variant-numeric: tabular-nums lining-nums !important;
+    }
+    .text-right { text-align: right !important; }
+    .text-center { text-align: center !important; }
+    .text-left { text-align: left !important; }
+
+    /* Table Hierarchy Styling */
+    .row-header-total {
+      background: #f1f5f9;
+      font-weight: 700;
+      border-top: 2px solid #cbd5e1;
+      border-bottom: 2px solid #cbd5e1;
+    }
+    .row-header-utility {
+      background: #f8fafc;
+      font-weight: 700;
+      border-top: 1px solid #cbd5e1;
+    }
+    .row-sub-item td:first-child {
+      padding-left: 2rem;
+      color: var(--text-muted);
+    }
+    .ratio-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border-radius: 9999px;
+      background: #e0f2fe;
+      color: #0284c7;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+
+    <!-- ヘッダー -->
+    <header class="app-header">
+      <div class="header-logo">
+        <div class="logo-icon">⚡</div>
+        <div>
+          <h1>工場エネルギー（電力）使用量集計・分析システム</h1>
+          <p>年間推移・設備別分析 ＆ ユーティリティ内訳ダッシュボード (デザインプレビュー)</p>
+        </div>
+      </div>
+    </header>
+
+    <!-- ナビゲーション -->
+    <nav class="main-nav">
+      <button class="main-nav-btn">📈 年間推移・品種別分析</button>
+      <button class="main-nav-btn active">⚙️ 年間推移・設備別分析</button>
+      <button class="main-nav-btn">📅 単月詳細集約 (日別・1時間)</button>
+    </nav>
+
+    <!-- 年間設備別分析ビュー -->
+    <section>
+
+      <!-- ツールバー -->
+      <div class="toolbar-card">
+        <div class="toolbar-group">
+          <span class="toolbar-label">対象年度:</span>
+          <select id="previewYearSelect" class="select-input">
+            <option value="2025" selected>2025年度 (2025/04〜2026/03)</option>
+            <option value="2024">2024年度 (2024/04〜2025/03)</option>
+          </select>
+        </div>
+
+        <div class="toolbar-group">
+          <span class="toolbar-label">グラフ表示系列:</span>
+          <div class="pill-group" id="previewPills">
+            <button class="pill-btn active" data-mode="utilityGroup">ユーティリティ統合</button>
+            <button class="pill-btn" data-mode="detail">設備詳細内訳</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPIサマリーカード -->
+      <div class="kpi-grid">
+        <div class="kpi-card" style="--card-color: #0284c7;">
+          <div class="kpi-label">年間総消費電力量</div>
+          <div class="kpi-value"><span id="kpiTotalPower">1,493,633.9</span><span class="kpi-unit">kWh</span></div>
+          <div class="kpi-sub">全設備合計（12ヶ月間）</div>
+        </div>
+        <div class="kpi-card" style="--card-color: #10b981;">
+          <div class="kpi-label">ユーティリティ合計電力</div>
+          <div class="kpi-value"><span id="kpiUtilPower">737,877.9</span><span class="kpi-unit">kWh</span></div>
+          <div class="kpi-sub">全体比 49.4%（チラー・コンプ他5設備計）</div>
+        </div>
+        <div class="kpi-card" style="--card-color: #f59e0b;">
+          <div class="kpi-label">最大消費設備</div>
+          <div class="kpi-value" style="font-size: 1.35rem;"><span id="kpiTopName">チラー</span></div>
+          <div class="kpi-sub" id="kpiTopDetail">387,343.8 kWh (全体比 25.9%)</div>
+        </div>
+        <div class="kpi-card" style="--card-color: #8b5cf6;">
+          <div class="kpi-label">年間操業時間</div>
+          <div class="kpi-value"><span id="kpiFillingHours">5,424.3</span><span class="kpi-unit">時間</span></div>
+          <div class="kpi-sub">水運転時間: 757.5 時間 (総操業 6,181.8 h)</div>
+        </div>
+      </div>
+
+      <!-- チャートグリッド -->
+      <div class="chart-grid">
+        <!-- 月別推移チャート -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">📊 設備別・月別電力推移 (kWh)</h2>
+          </div>
+          <div class="chart-container">
+            <canvas id="trendChart"></canvas>
+          </div>
+        </div>
+
+        <!-- 年間多層ドーナツチャート -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">🍩 年間電力構成比（外周: ユーティリティ詳細）</h2>
+          </div>
+          <div class="chart-container">
+            <canvas id="doughnutChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- 集計テーブル -->
+      <div class="table-card">
+        <div class="chart-header" style="padding: 1.25rem 1.5rem 0.75rem;">
+          <h2 class="chart-title">📋 年間設備別月別集計表</h2>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">単位: 電力 [kWh] / 時間 [h]</span>
+        </div>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="text-left" style="min-width: 170px;">設備・工程区分</th>
+                <th class="text-right" style="min-width: 110px;">年間累計</th>
+                <th class="text-center" style="min-width: 90px;">構成比</th>
+                <th class="text-right">4月</th>
+                <th class="text-right">5月</th>
+                <th class="text-right">6月</th>
+                <th class="text-right">7月</th>
+                <th class="text-right">8月</th>
+                <th class="text-right">9月</th>
+                <th class="text-right">10月</th>
+                <th class="text-right">11月</th>
+                <th class="text-right">12月</th>
+                <th class="text-right">1月</th>
+                <th class="text-right">2月</th>
+                <th class="text-right">3月</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody">
+              <!-- JSで生成 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <script>
+    // サンプルデータ (2025年度集約値)
+    const eqData = {
+      months: ["202504", "202505", "202506", "202507", "202508", "202509", "202510", "202511", "202512", "202601", "202602", "202603"],
+      monthLabels: ["4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月", "1月", "2月", "3月"],
+      categories: {
+        "総電力": { monthly: [115309.8, 122176.6, 126938.8, 137330.4, 120220.6, 138090.8, 136270.8, 125301.9, 126867.7, 107623.5, 128919.1, 108584.0], annualTotal: 1493633.9 },
+        "ユーティリティ": { monthly: [52011.5, 59160.0, 64966.5, 75525.2, 59714.4, 76092.3, 72583.5, 60814.7, 57700.3, 47714.2, 59400.9, 52194.5], annualTotal: 737877.9 },
+        "コンプレッサー": { monthly: [13626.5, 13919.1, 14227.1, 15156.4, 13340.9, 15263.6, 15000.5, 14594.1, 14246.3, 11985.3, 14757.2, 13112.5], annualTotal: 169229.4 },
+        "ボイラー": { monthly: [8645.7, 9081.7, 9345.9, 9349.9, 8760.1, 8775.9, 8835.4, 8887.4, 9152.0, 7750.6, 8863.6, 8202.4], annualTotal: 105650.6 },
+        "純水装置": { monthly: [2650.1, 2690.4, 2731.2, 2810.5, 2415.8, 2845.0, 2790.2, 2610.9, 2580.4, 2210.3, 2710.2, 2180.1], annualTotal: 31215.1 },
+        "排水処理": { monthly: [3610.2, 3720.5, 3810.1, 3990.2, 3510.4, 3980.1, 3910.3, 3810.5, 3720.1, 3120.4, 3810.2, 3446.1], annualTotal: 44439.1 },
+        "チラー": { monthly: [23479.0, 29748.3, 34852.2, 44218.2, 31687.2, 45227.7, 42047.1, 30911.8, 28001.5, 22647.6, 29259.7, 25253.4], annualTotal: 387343.8 },
+        "調合抽出": { monthly: [27500.2, 28900.5, 29800.1, 31500.4, 28600.3, 31700.2, 31200.5, 29700.1, 29900.4, 25400.2, 30100.9, 29191.3], annualTotal: 353594.1 },
+        "供給": { monthly: [3510.1, 3720.4, 3890.2, 4120.5, 3680.1, 4190.3, 4080.2, 3810.4, 3890.5, 3290.1, 3980.2, 3505.0], annualTotal: 45677.0 },
+        "充填": { monthly: [21500.4, 22400.1, 23200.5, 24800.2, 22100.4, 24900.1, 24400.3, 23100.2, 23300.1, 19800.5, 23400.2, 21911.0], annualTotal: 274813.0 },
+        "包装": { monthly: [6387.6, 6895.6, 6981.5, 7284.1, 6125.4, 7308.2, 7106.3, 6876.5, 6976.4, 5818.5, 7037.6, 6874.2], annualTotal: 81671.9 }
+      },
+      operationTimes: {
+        actualFillingHours: { monthly: [420.5, 442.1, 458.0, 492.3, 431.0, 496.2, 485.4, 452.1, 456.8, 388.2, 462.5, 439.2], annualTotal: 5424.3 },
+        waterHours: { monthly: [58.2, 62.1, 64.5, 69.1, 60.5, 69.8, 68.1, 63.5, 64.1, 54.5, 65.0, 58.1], annualTotal: 757.5 },
+        totalHours: { monthly: [478.7, 504.2, 522.5, 561.4, 491.5, 566.0, 553.5, 515.6, 520.9, 442.7, 527.5, 497.3], annualTotal: 6181.8 }
+      }
+    };
+
+    // テーブル生成
+    const rowsConfig = [
+      { key: '総電力', label: '総消費電力', type: 'category', className: 'row-header-total' },
+      { key: 'ユーティリティ', label: 'ユーティリティ計', type: 'category', className: 'row-header-utility' },
+      { key: 'コンプレッサー', label: '├ コンプレッサー', type: 'category', className: 'row-sub-item' },
+      { key: 'ボイラー', label: '├ ボイラー', type: 'category', className: 'row-sub-item' },
+      { key: '純水装置', label: '├ 純水装置', type: 'category', className: 'row-sub-item' },
+      { key: '排水処理', label: '├ 排水処理', type: 'category', className: 'row-sub-item' },
+      { key: 'チラー', label: '└ チラー', type: 'category', className: 'row-sub-item' },
+      { key: '調合抽出', label: '調合抽出', type: 'category' },
+      { key: '供給', label: '供給', type: 'category' },
+      { key: '充填', label: '充填', type: 'category' },
+      { key: '包装', label: '包装', type: 'category' },
+      { key: 'actualFillingHours', label: '実充填操業時間 (h)', type: 'time' },
+      { key: 'waterHours', label: '水運転時間 (h)', type: 'time' }
+    ];
+
+    const tbody = document.getElementById('tableBody');
+    const totalPower = eqData.categories['総電力'].annualTotal;
+
+    rowsConfig.forEach(row => {
+      let annualVal = 0;
+      let monthlyVals = [];
+      let ratioStr = '---';
+
+      if (row.type === 'category') {
+        const cat = eqData.categories[row.key];
+        annualVal = cat.annualTotal;
+        monthlyVals = cat.monthly;
+        const ratio = (annualVal / totalPower) * 100;
+        ratioStr = `<span class="ratio-badge">${ratio.toFixed(1)}%</span>`;
+      } else {
+        const t = eqData.operationTimes[row.key];
+        annualVal = t.annualTotal;
+        monthlyVals = t.monthly;
+        const ratio = (annualVal / eqData.operationTimes.totalHours.annualTotal) * 100;
+        ratioStr = `<span class="ratio-badge" style="background:#f1f5f9;color:#475569;">${ratio.toFixed(1)}%</span>`;
+      }
+
+      let tr = `<tr class="${row.className || ''}">
+        <td class="font-medium text-left">${row.label}</td>
+        <td class="text-right font-tabular font-bold">${annualVal.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 1})}</td>
+        <td class="text-center font-tabular">${ratioStr}</td>`;
+
+      monthlyVals.forEach(v => {
+        tr += `<td class="text-right font-tabular">${v.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 1})}</td>`;
+      });
+      tr += `</tr>`;
+      tbody.innerHTML += tr;
+    });
+
+    // Chart.js 描画
+    let trendChartInstance = null;
+    function renderTrend(mode) {
+      if (trendChartInstance) trendChartInstance.destroy();
+      const ctx = document.getElementById('trendChart').getContext('2d');
+      const labels = eqData.monthLabels;
+
+      let datasets = [];
+
+      // 1. 総電力 (直線折れ線ライン)
+      datasets.push({
+        type: 'line',
+        label: '総電力 (kWh)',
+        data: eqData.categories['総電力'].monthly,
+        borderColor: '#0284c7',
+        backgroundColor: 'rgba(2, 132, 199, 0.08)',
+        borderWidth: 2.2,
+        pointRadius: 4,
+        pointBackgroundColor: '#0284c7',
+        tension: 0,
+        order: 0
+      });
+
+      if (mode === 'utilityGroup') {
+        datasets.push(
+          { label: 'ユーティリティ計', data: eqData.categories['ユーティリティ'].monthly, backgroundColor: 'rgba(14, 165, 233, 0.8)', borderRadius: 3, order: 1 },
+          { label: '調合抽出', data: eqData.categories['調合抽出'].monthly, backgroundColor: 'rgba(124, 58, 237, 0.8)', borderRadius: 3, order: 1 },
+          { label: '供給', data: eqData.categories['供給'].monthly, backgroundColor: 'rgba(245, 158, 11, 0.8)', borderRadius: 3, order: 1 },
+          { label: '充填', data: eqData.categories['充填'].monthly, backgroundColor: 'rgba(5, 150, 105, 0.8)', borderRadius: 3, order: 1 },
+          { label: '包装', data: eqData.categories['包装'].monthly, backgroundColor: 'rgba(234, 88, 12, 0.8)', borderRadius: 3, order: 1 }
+        );
+      } else {
+        datasets.push(
+          { label: 'コンプレッサー', data: eqData.categories['コンプレッサー'].monthly, backgroundColor: '#38bdf8', borderRadius: 3, order: 1 },
+          { label: 'ボイラー', data: eqData.categories['ボイラー'].monthly, backgroundColor: '#0284c7', borderRadius: 3, order: 1 },
+          { label: '純水装置', data: eqData.categories['純水装置'].monthly, backgroundColor: '#0ea5e9', borderRadius: 3, order: 1 },
+          { label: '排水処理', data: eqData.categories['排水処理'].monthly, backgroundColor: '#64748b', borderRadius: 3, order: 1 },
+          { label: 'チラー', data: eqData.categories['チラー'].monthly, backgroundColor: '#06b6d4', borderRadius: 3, order: 1 },
+          { label: '調合抽出', data: eqData.categories['調合抽出'].monthly, backgroundColor: 'rgba(124, 58, 237, 0.8)', borderRadius: 3, order: 1 },
+          { label: '供給', data: eqData.categories['供給'].monthly, backgroundColor: 'rgba(245, 158, 11, 0.8)', borderRadius: 3, order: 1 },
+          { label: '充填', data: eqData.categories['充填'].monthly, backgroundColor: 'rgba(5, 150, 105, 0.8)', borderRadius: 3, order: 1 },
+          { label: '包装', data: eqData.categories['包装'].monthly, backgroundColor: 'rgba(234, 88, 12, 0.8)', borderRadius: 3, order: 1 }
+        );
+      }
+
+      trendChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'top', labels: { boxWidth: 12 } },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `${ctx.dataset.label}: ${ctx.raw.toLocaleString(undefined, {minimumFractionDigits: 1})} kWh`
+              }
+            }
+          },
+          scales: {
+            x: { stacked: true, grid: { display: false } },
+            y: {
+              stacked: true,
+              ticks: { callback: v => (v / 1000).toLocaleString() + 'k' },
+              title: { display: true, text: '電力量 [kWh]' }
+            }
+          }
+        }
+      });
+    }
+
+    renderTrend('utilityGroup');
+
+    // 多層ドーナツチャート描画
+    const ctxDoughnut = document.getElementById('doughnutChart').getContext('2d');
+    new Chart(ctxDoughnut, {
+      type: 'doughnut',
+      data: {
+        labels: [
+          // 内側
+          'ユーティリティ計', '調合抽出', '供給', '充填', '包装',
+          // 外側
+          'コンプレッサー', 'ボイラー', '純水装置', '排水処理', 'チラー'
+        ],
+        datasets: [
+          // 外側リング (ユーティリティ詳細内訳)
+          {
+            label: 'ユーティリティ詳細内訳',
+            data: [
+              eqData.categories['コンプレッサー'].annualTotal,
+              eqData.categories['ボイラー'].annualTotal,
+              eqData.categories['純水装置'].annualTotal,
+              eqData.categories['排水処理'].annualTotal,
+              eqData.categories['チラー'].annualTotal,
+              0, 0, 0, 0
+            ],
+            backgroundColor: [
+              '#059669', '#d97706', '#0284c7', '#64748b', '#38bdf8',
+              'transparent', 'transparent', 'transparent', 'transparent'
+            ],
+            borderWidth: 2,
+            weight: 0.8
+          },
+          // 内側リング (工程大分類)
+          {
+            label: '工程大分類',
+            data: [
+              eqData.categories['ユーティリティ'].annualTotal,
+              eqData.categories['調合抽出'].annualTotal,
+              eqData.categories['供給'].annualTotal,
+              eqData.categories['充填'].annualTotal,
+              eqData.categories['包装'].annualTotal
+            ],
+            backgroundColor: ['#10b981', '#f59e0b', '#06b6d4', '#8b5cf6', '#ec4899'],
+            borderWidth: 2,
+            weight: 1.2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: {
+              boxWidth: 10,
+              filter: (item) => !item.text.includes('未定義') && item.index < 5
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const val = ctx.raw;
+                if (!val || val === 0) return '';
+                const pct = ((val / totalPower) * 100).toFixed(1);
+                return `${ctx.label}: ${val.toLocaleString(undefined, {minimumFractionDigits: 1})} kWh (${pct}%)`;
+              }
+            }
+          }
+        },
+        cutout: '45%'
+      }
+    });
+
+    // ピルボタン切り替え
+    const pills = document.getElementById('previewPills');
+    pills.querySelectorAll('.pill-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        pills.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+        renderTrend(e.currentTarget.getAttribute('data-mode'));
+      });
+    });
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,4249 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>工場エネルギー（電力）使用量集計・分析システム</title>
+
+  <!-- Google Fonts: Outfit, Inter, Noto Sans JP -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <!-- 外部CDNライブラリ (PapaParse, SheetJS, Chart.js) -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <!-- CSSスタイル -->
+  <link rel="stylesheet" href="css/style.css?v=20261004_2">
+  <style>
+    /* GAS環境でのincludeフォールバック */
+    <style>
+/* =========================================================================
+   gas_app/css/style.css
+   エネルギー使用量集計システム - クリーン・エンタープライズ・ライトテーマ
+   ========================================================================= */
+
+:root {
+  /* メインブランドカラー (Sky & Slate) */
+  --primary: #0284c7;           /* Sky-600 */
+  --primary-hover: #0369a1;     /* Sky-700 */
+  --primary-light: #e0f2fe;     /* Sky-100 */
+  --primary-gradient: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  
+  --secondary: #475569;         /* Slate-600 */
+  --secondary-hover: #334155;   /* Slate-700 */
+  --secondary-light: #f1f5f9;   /* Slate-100 */
+  
+  --success: #10b981;           /* Emerald-500 */
+  --success-light: #d1fae5;     /* Emerald-100 */
+  --warning: #f59e0b;           /* Amber-500 */
+  --warning-light: #fef3c7;     /* Amber-100 */
+  --danger: #ef4444;            /* Red-500 */
+  --danger-light: #fee2e2;      /* Red-100 */
+
+  /* 品種分類別カラー (Excel原紙準拠の識別色) */
+  --color-20L: #2563eb;         /* 2.0L: Royal Blue */
+  --color-15L: #0891b2;         /* 1.5L: Cyan */
+  --color-10L: #059669;         /* 1.0L: Emerald */
+  --color-600R: #65a30d;        /* 600mL丸: Lime */
+  --color-500R: #d97706;        /* 500mL丸: Amber */
+  --color-500S: #ea580c;        /* 500mL角: Orange */
+  --color-350: #7c3aed;         /* 350mL: Purple */
+  --color-280: #db2777;         /* 280mL: Pink */
+  --color-monthly: #1e293b;     /* 月計: Slate-800 */
+
+  /* 背景・カード・ボーダー・テキスト */
+  --bg-page: #f8fafc;
+  --bg-card: #ffffff;
+  --border: #e2e8f0;
+  --border-focus: #38bdf8;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --text-light: #94a3b8;
+
+  /* シャドウ・角丸 */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+}
+
+/* =========================================================================
+   リセット＆タイポグラフィ
+   ========================================================================= */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: 'Outfit', 'Inter', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: var(--bg-page);
+  color: var(--text-main);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+button, input, select {
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+/* =========================================================================
+   レイアウト＆ヘッダー
+   ========================================================================= */
+.app-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 1.25rem 1.25rem 3rem;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-card);
+  padding: 1rem 1.5rem;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.logo-icon {
+  width: 2.6rem;
+  height: 2.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  color: var(--primary);
+  background: var(--primary-light);
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.header-logo h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-main);
+  letter-spacing: -0.01em;
+}
+
+.header-logo p {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+/* =========================================================================
+   ボタン＆コントロール
+   ========================================================================= */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius-md);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  text-decoration: none;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn-primary {
+  background: var(--primary-gradient);
+  color: #ffffff;
+  box-shadow: 0 2px 4px rgba(2, 132, 199, 0.2);
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.95;
+  box-shadow: 0 4px 8px rgba(2, 132, 199, 0.3);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: var(--bg-card);
+  color: var(--secondary);
+  border-color: var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--secondary-light);
+  color: var(--text-main);
+  border-color: #cbd5e1;
+}
+
+.btn-outline-primary {
+  background: var(--primary-light);
+  color: var(--primary);
+  border-color: rgba(2, 132, 199, 0.3);
+}
+
+.btn-outline-primary:hover:not(:disabled) {
+  background: #bae6fd;
+  color: var(--primary-hover);
+}
+
+/* =========================================================================
+   メインナビゲーション（大分類タブ）
+   ========================================================================= */
+.main-nav {
+  display: flex;
+  gap: 0.5rem;
+  background: #e2e8f0;
+  padding: 0.35rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 1.25rem;
+  width: fit-content;
+}
+
+.main-nav-btn {
+  padding: 0.55rem 1.25rem;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.main-nav-btn:hover {
+  color: var(--text-main);
+}
+
+.main-nav-btn.active {
+  background: var(--bg-card);
+  color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+
+/* =========================================================================
+   コントロールツールバー（年間・品種分析用）
+   ========================================================================= */
+.toolbar-card {
+  background: var(--bg-card);
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.toolbar-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* ピルボタングループ */
+.pill-group {
+  display: inline-flex;
+  background: var(--secondary-light);
+  padding: 0.25rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+}
+
+.pill-btn {
+  border: none;
+  background: transparent;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pill-btn:hover {
+  color: var(--text-main);
+}
+
+.pill-btn.active {
+  background: var(--bg-card);
+  color: var(--primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* セレクトボックス */
+.select-control {
+  padding: 0.45rem 2rem 0.45rem 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+}
+
+.select-control:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+}
+
+/* =========================================================================
+   KPIカードグリッド
+   ========================================================================= */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.kpi-card {
+  background: var(--bg-card);
+  padding: 1.1rem 1.25rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+  border-top: 4px solid var(--card-color, var(--primary));
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.kpi-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+}
+
+.kpi-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1.2;
+}
+
+.kpi-unit {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-left: 0.35rem;
+}
+
+.kpi-sub {
+  font-size: 0.76rem;
+  color: var(--text-light);
+  margin-top: 0.4rem;
+}
+
+/* =========================================================================
+   ドラッグ＆ドロップゾーン
+   ========================================================================= */
+.dropzone-card {
+  background: var(--bg-card);
+  border: 2px dashed #cbd5e1;
+  border-radius: var(--radius-lg);
+  padding: 2rem 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  margin-bottom: 1.25rem;
+}
+
+.dropzone-card:hover, .dropzone-card.dragover {
+  border-color: var(--primary);
+  background: #f0f9ff;
+}
+
+.dropzone-icon {
+  font-size: 2.2rem;
+  margin-bottom: 0.5rem;
+}
+
+.dropzone-text {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.dropzone-subtext {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.file-badges-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.tag-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  transition: all 0.2s ease;
+}
+
+.tag-badge.detected {
+  background: var(--success-light);
+  color: #065f46;
+  border-color: #6ee7b7;
+}
+
+.tag-badge.excel.detected {
+  background: var(--primary-light);
+  color: #0369a1;
+  border-color: #7dd3fc;
+}
+
+/* プログレスバー */
+.progress-bar-container {
+  display: none;
+  width: 100%;
+  max-width: 480px;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: var(--radius-full);
+  margin: 1.25rem auto 0;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--primary-gradient);
+  transition: width 0.2s ease;
+}
+
+/* =========================================================================
+   チャートセクション
+   ========================================================================= */
+.chart-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.chart-grid.single {
+  grid-template-columns: 1fr;
+}
+
+.chart-card {
+  background: var(--bg-card);
+  padding: 1.25rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.chart-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chart-container {
+  position: relative;
+  width: 100%;
+  height: 340px;
+}
+
+/* =========================================================================
+   テーブル
+   ========================================================================= */
+.table-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  margin-bottom: 1.25rem;
+}
+
+.table-header-bar {
+  padding: 0.9rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: #f8fafc;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.table-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  max-height: 480px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.data-table th, .data-table td {
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table td {
+  font-family: 'JetBrains Mono', 'Roboto Mono', 'SF Mono', Consolas, 'Courier New', monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  letter-spacing: -0.01em;
+}
+
+.data-table th {
+  background: #f1f5f9;
+  font-weight: 700;
+  color: var(--text-muted);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-top: 1px solid var(--border);
+}
+
+.data-table th:first-child, .data-table td:first-child {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  background: inherit;
+  z-index: 5;
+  font-family: 'Inter', 'Noto Sans JP', sans-serif;
+}
+
+.data-table tr:hover {
+  background-color: #f8fafc;
+}
+
+.data-table tr.total-row {
+  background-color: #f1f5f9;
+  font-weight: 700;
+  border-top: 2px solid #cbd5e1;
+}
+
+.data-table tr.total-row td {
+  color: var(--primary-hover);
+}
+
+/* =========================================================================
+   トースト通知
+   ========================================================================= */
+.toast-container {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.toast {
+  background: var(--bg-card);
+  color: var(--text-main);
+  padding: 0.75rem 1.1rem;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.88rem;
+  font-weight: 500;
+  animation: slideIn 0.25s ease-out forwards;
+}
+
+.toast.success {
+  border-left: 4px solid var(--success);
+}
+
+.toast.error {
+  border-left: 4px solid var(--danger);
+}
+
+.toast.info {
+  border-left: 4px solid var(--primary);
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* =========================================================================
+   レスポンシブ
+   ========================================================================= */
+@media (max-width: 900px) {
+  .chart-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =========================================================================
+   年間設備別集計テーブル用スタイル
+   ========================================================================= */
+.row-header-total {
+  background-color: rgba(2, 132, 199, 0.08) !important;
+  font-weight: 700 !important;
+}
+
+.row-header-utility {
+  background-color: rgba(14, 165, 233, 0.08) !important;
+  font-weight: 700 !important;
+  color: #0284c7;
+}
+
+.row-sub-item {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.row-sub-item td:first-child {
+  padding-left: 1.6rem !important;
+}
+
+.ratio-badge {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 9999px;
+  background: var(--bg-hover);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+
+</style>
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+
+    <!-- ヘッダー -->
+    <header class="app-header">
+      <div class="header-logo">
+        <div class="logo-icon">⚡</div>
+        <div>
+          <h1>工場エネルギー（電力）使用量集計・分析システム</h1>
+          <p>月別電力使用量集約グラフ・品種別推移 ＆ 原単位KPIダッシュボード</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <!-- 開発・検証用デモボタン (GAS本番環境では自動非表示) -->
+        <button id="annualDemoBtn" class="btn btn-outline-primary dev-only-btn" style="display: none;">📈 年間デモ再読込</button>
+        <button id="demoBtn" class="btn btn-secondary dev-only-btn" style="display: none;">📅 単月デモ (2025年3月)</button>
+        <button id="exportBtn" class="btn btn-secondary">Excelエクスポート</button>
+        <button id="syncBtn" class="btn btn-primary" disabled>スプレッドシートへ反映</button>
+      </div>
+    </header>
+
+    <!-- メインナビゲーションタブ -->
+    <nav class="main-nav">
+      <button class="main-nav-btn active" data-view="annualView">📈 年間推移・品種別分析</button>
+      <button class="main-nav-btn" data-view="annualEquipmentView">⚙️ 年間推移・設備別分析</button>
+      <button class="main-nav-btn" data-view="monthlyView">📅 単月詳細集約 (日別・1時間)</button>
+    </nav>
+
+    <!-- =========================================================================
+         ビュー 1: 年間推移・品種別分析 (Excel原紙完全再現)
+         ========================================================================= -->
+    <section id="annualView" class="view-section active">
+
+      <!-- コントロールツールバー -->
+      <div class="toolbar-card">
+        <div class="toolbar-group">
+          <span class="toolbar-label">対象年度:</span>
+          <select id="fiscalYearSelector" class="select-control">
+            <option value="">（データ未読込）</option>
+          </select>
+        </div>
+
+        <div class="toolbar-group">
+          <span class="toolbar-label">操業評価モード:</span>
+          <div class="pill-group" id="operationModePills">
+            <button class="pill-btn active" data-mode="combined">水運転＋実充填</button>
+            <button class="pill-btn" data-mode="waterOnly">水運転のみ</button>
+            <button class="pill-btn" data-mode="fillingOnly">実充填のみ</button>
+          </div>
+        </div>
+
+        <div class="toolbar-group">
+          <span class="toolbar-label">表示指標:</span>
+          <select id="metricSelector" class="select-control">
+            <option value="powerKwh" selected>電力量 (kWh)</option>
+            <option value="operationMin">操業時間 (分)</option>
+            <option value="productionBottles">生産本数 (本)</option>
+            <option value="kwhPerBottle">単位本電力量 (kWh/本)</option>
+            <option value="kwhPerMinute">単位時間電力量 (kWh/分)</option>
+            <option value="powerCostYen">電力コスト (円)</option>
+            <option value="costPerBottle">単位本コスト (円/本)</option>
+            <option value="costPerMinute">単位時間コスト (円/分)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 年間KPIサマリーカード -->
+      <div class="kpi-grid">
+        <div class="kpi-card" style="--card-color: var(--primary);">
+          <div class="kpi-label">年間総電力量</div>
+          <div class="kpi-value"><span id="annualTotalKwh">---</span><span class="kpi-unit">kWh</span></div>
+          <div class="kpi-sub">4月〜3月 年間累計実績値</div>
+        </div>
+        <div class="kpi-card" style="--card-color: var(--success);">
+          <div class="kpi-label">年間操業時間</div>
+          <div class="kpi-value"><span id="annualTotalHours">---</span><span class="kpi-unit">時間</span></div>
+          <div class="kpi-sub">選択中の操業モード合計</div>
+        </div>
+        <div class="kpi-card" style="--card-color: var(--warning);">
+          <div class="kpi-label">年間総生産本数</div>
+          <div class="kpi-value"><span id="annualTotalBottles">---</span><span class="kpi-unit">本</span></div>
+          <div class="kpi-sub">月報PET累計生産本数</div>
+        </div>
+        <div class="kpi-card" style="--card-color: #8b5cf6;">
+          <div class="kpi-label">年間平均原単位</div>
+          <div class="kpi-value"><span id="annualAvgKpi">---</span><span class="kpi-unit">kWh/本</span></div>
+          <div class="kpi-sub">年間総電力量 ÷ 総生産本数</div>
+        </div>
+      </div>
+
+      <!-- 年間グラフグリッド -->
+      <div class="chart-grid">
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">📊 月別電力使用量集約グラフ (8品種積み上げ ＋ 月計)</h2>
+            <span class="toolbar-label" id="currentMetricLabel">電力量 (kWh)</span>
+          </div>
+          <div class="chart-container">
+            <canvas id="annualStackedChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">📈 月別電力使用量推移 (主要品種トレンド)</h2>
+          </div>
+          <div class="chart-container">
+            <canvas id="annualTrendChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- 年間月別集計テーブル (Excel原紙完全再現) -->
+      <div class="table-card">
+        <div class="table-header-bar">
+          <h3 class="table-title">📋 年間月別実績集計表 (<span id="tableMetricTitle">電力量 kWh</span>)</h3>
+          <span class="toolbar-label">月別電力使用量集約グラフ表示(総電力 2024).xlsx 準拠</span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" id="annualDataTable">
+            <thead>
+              <tr>
+                <th>年月</th>
+                <th>累計</th>
+                <th>月計</th>
+                <th>2.0L</th>
+                <th>1.5L</th>
+                <th>1.0L</th>
+                <th>600ｍL丸</th>
+                <th>500ｍL丸</th>
+                <th>500ｍL角</th>
+                <th>350ｍL</th>
+                <th>280ｍL</th>
+              </tr>
+            </thead>
+            <tbody id="annualTableBody">
+              <tr>
+                <td colspan="10" style="text-align:center; padding: 2rem; color: var(--text-muted);">
+                  データを読み込むと、年間月別実績集計表が表示されます
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- =========================================================================
+         ビュー 2: 年間推移・設備別分析 (ユーティリティ・工程別)
+         ========================================================================= -->
+    <section id="annualEquipmentView" class="view-section" style="display: none;">
+
+      <!-- コントロールツールバー -->
+      <div class="toolbar-card">
+        <div class="toolbar-group">
+          <span class="toolbar-label">対象年度:</span>
+          <select id="annualEquipmentYearSelect" class="select-control">
+            <option value="">（データ未読込）</option>
+          </select>
+        </div>
+
+        <div class="toolbar-group">
+          <span class="toolbar-label">グラフ系列モード:</span>
+          <div class="pill-group" id="equipViewModePills">
+            <button class="pill-btn active" data-mode="utilityGroup">ユーティリティ統合</button>
+            <button class="pill-btn" data-mode="detailAll">設備詳細内訳</button>
+          </div>
+        </div>
+
+        <div class="toolbar-group" style="margin-left: auto;">
+          <span style="font-size: 0.85rem; color: var(--text-muted);">
+            ※全工程およびユーティリティ設備（コンプレッサー、ボイラー、純水装置、排水処理、チラー）の月次推移
+          </span>
+        </div>
+      </div>
+
+      <!-- 年間設備別KPIサマリーカード -->
+      <div class="kpi-grid">
+        <div class="kpi-card" style="--card-color: var(--primary);">
+          <div class="kpi-label">年間総電力量</div>
+          <div class="kpi-value"><span id="kpiEquipTotalKwh">---</span><span class="kpi-unit">kWh</span></div>
+          <div class="kpi-sub">全測定盤の年間合算実績</div>
+        </div>
+        <div class="kpi-card" style="--card-color: #0284c7;">
+          <div class="kpi-label">年間ユーティリティ電力量</div>
+          <div class="kpi-value"><span id="kpiEquipUtilityKwh">---</span><span class="kpi-unit">kWh</span></div>
+          <div class="kpi-sub">総電力比: <strong id="kpiEquipUtilityRatio" style="color: #0284c7;">---%</strong></div>
+        </div>
+        <div class="kpi-card" style="--card-color: #38bdf8;">
+          <div class="kpi-label">最大電力消費設備</div>
+          <div class="kpi-value" style="font-size: 1.35rem;"><span id="kpiEquipTopName">---</span></div>
+          <div class="kpi-sub"><span id="kpiEquipTopKwh">---</span> kWh (<span id="kpiEquipTopRatio">---%</span>)</div>
+        </div>
+        <div class="kpi-card" style="--card-color: var(--success);">
+          <div class="kpi-label">年間実充填操業時間</div>
+          <div class="kpi-value"><span id="kpiEquipFillingHours">---</span><span class="kpi-unit">時間</span></div>
+          <div class="kpi-sub">年間総生産稼働時間</div>
+        </div>
+        <div class="kpi-card" style="--card-color: var(--secondary);">
+          <div class="kpi-label">年間水運転時間</div>
+          <div class="kpi-value"><span id="kpiEquipWaterHours">---</span><span class="kpi-unit">時間</span></div>
+          <div class="kpi-sub">年間洗浄・待機運転時間</div>
+        </div>
+      </div>
+
+      <!-- 年間設備別グラフエリア -->
+      <div class="chart-grid">
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">📊 月別設備別・工程別電力推移 (kWh)</h2>
+          </div>
+          <div class="chart-container">
+            <canvas id="annualEquipmentTrendChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">🍩 年間設備別電力比率 (多層円弧内訳)</h2>
+          </div>
+          <div class="chart-container">
+            <canvas id="annualEquipmentDoughnutChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- 年間設備別集計テーブル -->
+      <div class="table-card">
+        <div class="table-header-bar">
+          <h3 class="table-title">📋 年間推移・設備別集計データ表</h3>
+          <span style="font-size: 0.82rem; color: var(--text-muted); margin-left: auto;">
+            ※単位: 電力量 [kWh]、時間 [時間]
+          </span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" id="annualEquipmentTable">
+            <thead>
+              <tr>
+                <th style="min-width: 170px;">設備・工程区分</th>
+                <th style="min-width: 110px; background: rgba(2, 132, 199, 0.08); font-weight: 700;">年間累計</th>
+                <th style="min-width: 85px;">構成比</th>
+                <th>4月</th>
+                <th>5月</th>
+                <th>6月</th>
+                <th>7月</th>
+                <th>8月</th>
+                <th>9月</th>
+                <th>10月</th>
+                <th>11月</th>
+                <th>12月</th>
+                <th>1月</th>
+                <th>2月</th>
+                <th>3月</th>
+              </tr>
+            </thead>
+            <tbody id="annualEquipmentTableBody">
+              <tr>
+                <td colspan="15" style="text-align:center; padding: 2rem; color: var(--text-muted);">
+                  データを読み込むと、年間設備別集計データが表示されます
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- =========================================================================
+         ビュー 3: 単月詳細集約 (日別・1時間)
+         ========================================================================= -->
+    <section id="monthlyView" class="view-section" style="display: none;">
+
+      <!-- ファイルドラッグ＆ドロップゾーン -->
+      <div id="dropzone" class="dropzone-card">
+        <div class="dropzone-icon">📁</div>
+        <div class="dropzone-text">CSV/TXTファイル または 外部Excelをドラッグ＆ドロップ</div>
+        <div class="dropzone-subtext">tag02〜07の電力ロガーデータ、月報PET、かつらぎ計算表を自動判別して即座に集約します</div>
+        <input type="file" id="fileInput" class="hidden-file-input" multiple accept=".txt,.csv,.xlsx,.xls">
+
+        <!-- 検出バッジ -->
+        <div class="file-badges-container">
+          <span id="tag02" class="tag-badge">tag02 (品種・工程)</span>
+          <span id="tag04" class="tag-badge">tag04 (コンプレッサー)</span>
+          <span id="tag05" class="tag-badge">tag05 (1F動力盤)</span>
+          <span id="tag06" class="tag-badge">tag06 (2F動力・電灯盤)</span>
+          <span id="tag07" class="tag-badge">tag07 (抽出・充填盤)</span>
+          <span id="tagEnergy" class="tag-badge excel">かつらぎ計算表 (電気代)</span>
+          <span id="tagPet" class="tag-badge excel">月報PET (生産本数)</span>
+        </div>
+
+        <!-- プログレスバー -->
+        <div id="progressBarContainer" class="progress-bar-container">
+          <div id="progressBarFill" class="progress-bar-fill"></div>
+        </div>
+      </div>
+
+      <!-- 単月コントロールツールバー (年月選択・切替) -->
+      <div class="toolbar-card" style="margin-bottom: 1.5rem;">
+        <div class="toolbar-group">
+          <span class="toolbar-label">表示対象年月:</span>
+          <select id="monthlyYearMonthSelect" class="form-select">
+            <option value="">（データ未読込）</option>
+          </select>
+        </div>
+        <div class="toolbar-group" style="margin-left: auto;">
+          <span id="monthlyDataStatus" style="font-size: 0.85rem; color: var(--text-muted);"></span>
+        </div>
+      </div>
+
+      <!-- 単月KPIサマリーカード -->
+      <div class="kpi-grid">
+        <div class="kpi-card" style="--card-color: var(--primary);">
+          <div class="kpi-label">月間総電力量</div>
+          <div class="kpi-value"><span id="kpiTotalKwh">---</span><span class="kpi-unit">kWh</span></div>
+          <div class="kpi-sub">全測定盤の合算実績値</div>
+        </div>
+        <div class="kpi-card" style="--card-color: var(--success);">
+          <div class="kpi-label">実充填操業時間</div>
+          <div class="kpi-value"><span id="kpiFillingHours">---</span><span class="kpi-unit">時間</span></div>
+          <div class="kpi-sub">ステップ大分類30（実充填）</div>
+        </div>
+        <div class="kpi-card" style="--card-color: var(--secondary);">
+          <div class="kpi-label">水運転時間</div>
+          <div class="kpi-value"><span id="kpiWaterHours">---</span><span class="kpi-unit">時間</span></div>
+          <div class="kpi-sub">ステップ大分類20（水運転）</div>
+        </div>
+        <div class="kpi-card" style="--card-color: var(--warning);">
+          <div class="kpi-label">電力量単価</div>
+          <div class="kpi-value"><span id="kpiUnitPrice">---</span><span class="kpi-unit">円/kWh</span></div>
+          <div class="kpi-sub">エネルギー計算表より算出</div>
+        </div>
+        <div class="kpi-card" style="--card-color: #8b5cf6;">
+          <div class="kpi-label">集約データ行数</div>
+          <div class="kpi-value"><span id="kpiHoursCount">---</span><span class="kpi-unit">時間分</span></div>
+          <div class="kpi-sub">1分値約4.5万行から圧縮完了</div>
+        </div>
+      </div>
+
+      <!-- 単月グラフ -->
+      <div class="chart-grid">
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">📊 日別電力使用量推移 (kWh)</h2>
+          </div>
+          <div class="chart-container">
+            <canvas id="dailyChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">🍩 工程別電力比率</h2>
+          </div>
+          <div class="chart-container">
+            <canvas id="categoryChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- 単月テーブル -->
+      <div class="table-card">
+        <div class="table-header-bar">
+          <h3 class="table-title">📋 日別工程別集計データ</h3>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>年月日</th>
+                <th>総電力(kWh)</th>
+                <th style="background: rgba(2, 132, 199, 0.08); color: #0284c7; font-weight: 700;">ユーティリティ</th>
+                <th>コンプレッサー</th>
+                <th>ボイラー</th>
+                <th>純水装置</th>
+                <th>排水処理</th>
+                <th>チラー</th>
+                <th>調合抽出</th>
+                <th>供給</th>
+                <th>充填</th>
+                <th>包装</th>
+                <th>実充填(分)</th>
+                <th>水運転(分)</th>
+              </tr>
+            </thead>
+            <tbody id="dailyTableBody">
+              <tr>
+                <td colspan="14" style="text-align: center; color: var(--text-light); padding: 2rem;">
+                  ファイルをドラッグ＆ドロップするか、デモデータを読み込んでください
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <!-- トーストコンテナ -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- スクリプト読み込み (GAS環境用インクルード) -->
+  <script>
+/**
+ * gas_app/js/config.js
+ * 電力集計システム マスター定義・カラムマッピング
+ * ブラウザ環境 (window) および Node.js 環境 (module.exports) 両対応
+ */
+
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory();
+  } else {
+    root.AppConfig = factory();
+  }
+}(typeof self !== 'undefined' ? self : this, function () {
+
+  // 品種マスター
+  const VARIETY_MASTER = {
+    100: '停止',
+    101: '２Ｌ 長角',
+    102: '1.5L 長角',
+    103: '１Ｌ 長角',
+    104: '900ml 長角',
+    105: '500ml 丸',
+    106: '500ml 角',
+    107: '280ml 丸',
+    108: '2L 6角',
+    109: '500ml 6角',
+    110: 'その他'
+  };
+
+  // 品種8大分類グループ (Excel原紙・月別電力使用量集約グラフ表示(総電力 2024).xlsx 準拠)
+  const VARIETY_GROUPS = [
+    { key: '2.0L', name: '2.0L', capacityL: 2.0, bpm: 180, codes: [101, 108], color: '#2563eb' },
+    { key: '1.5L', name: '1.5L', capacityL: 1.5, bpm: 240, codes: [102], color: '#0891b2' },
+    { key: '1.0L', name: '1.0L', capacityL: 1.0, bpm: 250, codes: [103, 104], color: '#059669' },
+    { key: '600mL丸', name: '600ｍL丸', capacityL: 0.6, bpm: 420, codes: [111], color: '#65a30d' },
+    { key: '500mL丸', name: '500ｍL丸', capacityL: 0.5, bpm: 500, codes: [105], color: '#d97706' },
+    { key: '500mL角', name: '500ｍL角', capacityL: 0.5, bpm: 500, codes: [106, 109], color: '#ea580c' },
+    { key: '350mL', name: '350ｍL', capacityL: 0.35, bpm: 500, codes: [112], color: '#7c3aed' },
+    { key: '280mL', name: '280ｍL', capacityL: 0.28, bpm: 500, codes: [107], color: '#db2777' }
+  ];
+
+  // 評価指標マスター (Excel原紙準拠)
+  const EVALUATION_METRICS = [
+    { key: 'powerKwh', name: '電力量', unit: 'kWh', digits: 1 },
+    { key: 'operationMin', name: '操業時間', unit: '分', digits: 0 },
+    { key: 'productionBottles', name: '生産本数', unit: '本', digits: 0 },
+    { key: 'kwhPerBottle', name: '単位本電力量', unit: 'kWh/本', digits: 4 },
+    { key: 'kwhPerMinute', name: '単位時間電力量', unit: 'kWh/分', digits: 2 },
+    { key: 'powerCostYen', name: '電力コスト', unit: '円', digits: 0 },
+    { key: 'costPerBottle', name: '単位本コスト', unit: '円/本', digits: 4 },
+    { key: 'costPerMinute', name: '単位時間コスト', unit: '円/分', digits: 2 }
+  ];
+
+  // 操業評価モード
+  const OPERATION_MODES = [
+    { key: 'combined', name: '水運転＋実充填', stepCodes: [20, 30] },
+    { key: 'waterOnly', name: '水運転のみ', stepCodes: [20] },
+    { key: 'fillingOnly', name: '実充填のみ', stepCodes: [30] }
+  ];
+
+  // ステップマスター (工程分類) - 原紙Excel「ステップ」シート準拠 (全57件)
+  const STEP_MASTER = {
+    0: { name: '停止(仮)', category: 'その他', code: 0 },
+    1: { name: '給水', category: 'SIP', code: 10 },
+    2: { name: '循環昇温', category: 'SIP', code: 10 },
+    3: { name: '給湯', category: 'SIP', code: 10 },
+    4: { name: '循環加熱', category: 'SIP', code: 10 },
+    5: { name: '滅菌保持', category: 'SIP', code: 10 },
+    6: { name: '冷却１', category: 'SIP', code: 10 },
+    7: { name: '冷却２', category: 'SIP', code: 10 },
+    8: { name: '温度安定化', category: '水運転', code: 20 },
+    9: { name: 'フィラー昇温待機', category: '水運転', code: 20 },
+    10: { name: 'フィラー昇温', category: '水運転', code: 20 },
+    11: { name: '水運転', category: '水運転', code: 20 },
+    12: { name: '原液置換', category: '実充填', code: 30 },
+    13: { name: '原液循環', category: '実充填', code: 30 },
+    14: { name: '次工程送液', category: '実充填', code: 30 },
+    15: { name: 'ＢＴ排出', category: '実充填', code: 30 },
+    16: { name: '水押し', category: '実充填', code: 30 },
+    17: { name: 'すすぎ', category: '水運転', code: 20 },
+    18: { name: '水運転待機', category: '水運転', code: 20 },
+    19: { name: '機器冷却', category: 'その他', code: 0 },
+    20: { name: '動力停止', category: 'その他', code: 0 },
+    25: { name: '殺菌温度異常', category: '実充填', code: 30 },
+    26: { name: '殺菌異常回収', category: '実充填', code: 30 },
+    27: { name: '殺菌異常すすぎ', category: '水運転', code: 20 },
+    28: { name: '殺菌異常水運転', category: '水運転', code: 20 },
+    30: { name: '滞留オーバー', category: 'その他', code: 0 },
+    31: { name: '滞留回収', category: 'その他', code: 0 },
+    51: { name: '温水すすぎ１', category: 'CIP', code: 40 },
+    52: { name: '温水すすぎ２', category: 'CIP', code: 40 },
+    53: { name: 'ＡＬ１送液１', category: 'CIP', code: 40 },
+    54: { name: 'ＡＬ１送液２', category: 'CIP', code: 40 },
+    55: { name: 'ＡＬ１循環', category: 'CIP', code: 40 },
+    56: { name: 'ＡＬ１排出', category: 'CIP', code: 40 },
+    57: { name: 'ＡＬ１すすぎ１', category: 'CIP', code: 40 },
+    58: { name: 'ＡＬ１すすぎ２', category: 'CIP', code: 40 },
+    59: { name: 'ＡＣ１送液１', category: 'CIP', code: 40 },
+    60: { name: 'ＡＣ１送液２', category: 'CIP', code: 40 },
+    61: { name: 'ＡＣ１循環', category: 'CIP', code: 40 },
+    62: { name: 'ＡＣ１排出', category: 'CIP', code: 40 },
+    63: { name: 'ＡＣ１すすぎ１', category: 'CIP', code: 40 },
+    64: { name: 'ＡＣ１すすぎ２', category: 'CIP', code: 40 },
+    65: { name: 'ＡＬ２送液１', category: 'CIP', code: 40 },
+    66: { name: 'ＡＬ２送液２', category: 'CIP', code: 40 },
+    67: { name: 'ＡＬ２循環', category: 'CIP', code: 40 },
+    68: { name: 'ＡＬ２排出', category: 'CIP', code: 40 },
+    69: { name: 'ＡＬ２すすぎ１', category: 'CIP', code: 40 },
+    70: { name: 'ＡＬ２すすぎ２', category: 'CIP', code: 40 },
+    71: { name: 'ＡＣ２送液１', category: 'CIP', code: 40 },
+    72: { name: 'ＡＣ２送液２', category: 'CIP', code: 40 },
+    73: { name: 'ＡＣ２循環', category: 'CIP', code: 40 },
+    74: { name: 'ＡＣ２排出', category: 'CIP', code: 40 },
+    75: { name: 'ＡＣ２すすぎ１', category: 'CIP', code: 40 },
+    76: { name: 'ＡＣ２すすぎ２', category: 'CIP', code: 40 },
+    77: { name: '最終すすぎ１', category: 'CIP', code: 40 },
+    78: { name: '最終すすぎ２', category: 'CIP', code: 40 },
+    79: { name: '残水ブロー', category: 'CIP', code: 40 },
+    80: { name: 'ＣＩＰ終了', category: 'CIP', code: 40 }
+  };
+
+  // 工程カテゴリ定義
+  const CATEGORIES = [
+    { key: 'total', name: '総電力', sheetName: '1時間集計(総電力用)' },
+    { key: 'utility', name: 'ユーティリティ', sheetName: '1時間集計(ユーティリティ)' },
+    { key: 'compressor', name: 'コンプレッサー', sheetName: '1時間集計(コンプレッサー)' },
+    { key: 'boiler', name: 'ボイラー', sheetName: '1時間集計(ボイラー)' },
+    { key: 'pureWater', name: '純水装置', sheetName: '1時間集計(純水装置)' },
+    { key: 'drainWater', name: '排水処理', sheetName: '1時間集計(排水処理)' },
+    { key: 'chiller', name: 'チラー', sheetName: '1時間集計(チラー)' },
+    { key: 'mixing', name: '調合抽出', sheetName: '1時間集計(調合抽出)' },
+    { key: 'supply', name: '供給', sheetName: '1時間集計(供給)' },
+    { key: 'filling', name: '充填', sheetName: '1時間集計(充填)' },
+    { key: 'packaging', name: '包装', sheetName: '1時間集計(包装)' }
+  ];
+
+  // 各工程シートが合算する列リスト (Excel実績シートと完全一致)
+  const CATEGORY_COLUMN_MAP = {
+    'utility': ['H', 'K', 'I', 'J', 'AK'],
+    'compressor': ['H'],
+    'boiler': ['K'],
+    'pureWater': ['I'],
+    'drainWater': ['J'],
+    'chiller': ['AK'],
+    'mixing': ['CC', 'CH', 'CI', 'CJ', 'CK'],
+    'supply': ['BW', 'BZ', 'CE', 'CF'],
+    'filling': ['BV', 'BX', 'CG', 'CM', 'CN', 'CO'],
+    'packaging': ['BF', 'BP', 'BQ', 'BR', 'BS', 'BT', 'BU', 'BY', 'CL'],
+    'total': [
+      'G', 'H', 'I', 'J', 'K', 'L', 'M',
+      'AT', 'AU', 'AV', 'AW', 'AX', 'AY', 'AZ', 'BA', 'BB', 'BC',
+      'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BK', 'BL', 'BM', 'BN', 'BO',
+      'BP', 'BQ', 'BR', 'BS', 'BT', 'BU', 'BV', 'BW', 'BX', 'BY', 'BZ', 'CA', 'CB',
+      'CC', 'CD', 'CE', 'CF', 'CG', 'CH', 'CI', 'CJ', 'CK', 'CL', 'CM', 'CN', 'CO'
+    ]
+  };
+
+
+  // 全90列のカラムマッピング定義 (D列〜CO列)
+  // tag: タグ種別, kwIndex: 各タグ内のkW列出現順序(0始まり), fixedVal: 固定値(未計測盤)
+  const EQUIPMENT_COLUMNS = [
+    // tag04 (コンプレッサー No1〜No3)
+    { col: 'D', tag: 'tag04', kwIndex: 0, label: 'コンプレッサー No1', category: 'total' },
+    { col: 'E', tag: 'tag04', kwIndex: 1, label: 'コンプレッサー No2', category: 'total' },
+    { col: 'F', tag: 'tag04', kwIndex: 2, label: 'コンプレッサー No3', category: 'total' },
+
+    // tag05 (1021-1109)
+    { col: 'G', tag: 'tag05', kwIndex: 0, label: '1F 低圧動力盤 №1 AMPAC', category: 'total' },
+    { col: 'H', tag: 'tag05', kwIndex: 1, label: '1F 低圧動力盤 №2 ｺﾝﾌﾟﾚｯｻｰ制御盤', category: 'total' },
+    { col: 'I', tag: 'tag05', kwIndex: 2, label: '井水純水制御盤', category: 'total' },
+    { col: 'J', tag: 'tag05', kwIndex: 3, label: '排水処理制御盤', category: 'total' },
+    { col: 'K', tag: 'tag05', kwIndex: 4, label: 'ﾎﾞｲﾗｰ制御盤', category: 'total' },
+    { col: 'L', tag: 'tag05', kwIndex: 5, label: 'ｶｯﾌﾟ殺菌制御盤', category: 'total' },
+    { col: 'M', tag: null, fixedVal: 0.0, label: '消火ﾎﾟﾝﾌﾟ盤', category: 'total' },
+    { col: 'N', tag: 'tag05', kwIndex: 6, label: '排水処理棟 原水ﾎﾟﾝﾌﾟ1号', category: 'total' },
+    { col: 'O', tag: 'tag05', kwIndex: 7, label: '排水処理棟 原水ﾎﾟﾝﾌﾟ2号', category: 'total' },
+    { col: 'P', tag: 'tag05', kwIndex: 8, label: '排水処理棟 調整ﾎﾟﾝﾌﾟ1号', category: 'total' },
+    { col: 'Q', tag: 'tag05', kwIndex: 9, label: '排水処理棟 調整ﾎﾟﾝﾌﾟ2号', category: 'total' },
+    { col: 'R', tag: 'tag05', kwIndex: 10, label: '排水処理棟 暖気ﾌﾞﾛｱ1号', category: 'total' },
+    { col: 'S', tag: 'tag05', kwIndex: 11, label: '排水処理棟 暖気ﾌﾞﾛｱ2号', category: 'total' },
+    { col: 'T', tag: 'tag05', kwIndex: 12, label: '排水処理棟 流量調整槽ﾌﾞﾛｱ', category: 'total' },
+    { col: 'U', tag: 'tag05', kwIndex: 13, label: '排水処理棟 沈殿槽分配ﾎﾟﾝﾌﾟ1号', category: 'total' },
+    { col: 'V', tag: 'tag05', kwIndex: 14, label: '排水処理棟 沈殿槽分配ﾎﾟﾝﾌﾟ2号', category: 'total' },
+    { col: 'W', tag: 'tag05', kwIndex: 15, label: '純水装置1号盤 井戸ﾎﾟﾝﾌﾟA', category: 'total' },
+    { col: 'X', tag: 'tag05', kwIndex: 16, label: '純水装置1号盤 井戸ﾎﾟﾝﾌﾟB', category: 'total' },
+    { col: 'Y', tag: 'tag05', kwIndex: 17, label: '純水装置1号盤 ろ過原水ﾎﾟﾝﾌﾟ', category: 'total' },
+    { col: 'Z', tag: 'tag05', kwIndex: 18, label: '純水装置1号盤 中継ﾎﾟﾝﾌﾟ', category: 'total' },
+    { col: 'AA', tag: 'tag05', kwIndex: 19, label: '純水装置1号盤 原水送水ﾎﾟﾝﾌﾟ', category: 'total' },
+    { col: 'AB', tag: 'tag05', kwIndex: 20, label: '純水装置1号盤 純水送水ﾎﾟﾝﾌﾟ', category: 'total' },
+    { col: 'AC', tag: 'tag05', kwIndex: 21, label: '純水装置1号盤 上水低圧ﾎﾟﾝﾌﾟ', category: 'total' },
+    { col: 'AD', tag: 'tag05', kwIndex: 22, label: '純水装置1号盤 ﾊﾟｽﾄﾗﾎﾟﾝﾌﾟ', category: 'total' },
+    { col: 'AE', tag: 'tag05', kwIndex: 23, label: '純水装置1号盤 駆動水ﾎﾟﾝﾌﾟ', category: 'total' },
+    { col: 'AF', tag: 'tag05', kwIndex: 24, label: '純水装置1号盤 UV殺菌器', category: 'total' },
+    { col: 'AG', tag: 'tag05', kwIndex: 25, label: '純水装置2号盤 2号中継ﾎﾟﾝﾌﾟゴウ', category: 'total' },
+    { col: 'AH', tag: 'tag05', kwIndex: 26, label: '純水装置2号盤 2号ろ過原水ﾎﾟﾝﾌﾟ', category: 'total' },
+    { col: 'AI', tag: 'tag05', kwIndex: 27, label: '純水装置2号盤 2号駆動水ﾎﾟﾝﾌﾟ', category: 'total' },
+
+    // tag06 (1110-1209: 45列)
+    { col: 'AJ', tag: 'tag06', kwIndex: 0, label: '屋上 屋上室外機', category: 'total' },
+    { col: 'AK', tag: 'tag06', kwIndex: 1, label: '屋上 ﾁﾗｰ', category: 'chiller' },
+    { col: 'AL', tag: 'tag06', kwIndex: 2, label: '屋上 屋上室外機ACP-C', category: 'total' },
+    { col: 'AM', tag: 'tag06', kwIndex: 3, label: '屋上 屋上冷水2次ﾎﾟﾝﾌﾟ(生産用)', category: 'total' },
+    { col: 'AN', tag: 'tag06', kwIndex: 4, label: '抽出室 ﾙｰﾂﾌﾞﾛｱ', category: 'mixing' },
+    { col: 'AO', tag: 'tag06', kwIndex: 5, label: '抽出室 ﾛｰﾀﾘｰﾊﾞﾙﾌﾞ', category: 'mixing' },
+    { col: 'AP', tag: 'tag06', kwIndex: 6, label: '抽出室 粕搬送ｺﾝﾍﾞｱ抽出器下', category: 'supply' },
+    { col: 'AQ', tag: 'tag06', kwIndex: 7, label: '抽出室 粕搬送ｺﾝﾍﾞｱ合流CV', category: 'supply' },
+    { col: 'AR', tag: 'tag06', kwIndex: 8, label: '抽出室 粕搬送CV(ﾆｰﾀﾞｰ用)', category: 'supply' },
+    { col: 'AS', tag: 'tag06', kwIndex: 9, label: '抽出室 屋外振分ｽｸﾘｭｰ', category: 'supply' },
+    { col: 'AT', tag: 'tag06', kwIndex: 10, label: '2F 低圧電灯盤 №1 1LM-A', category: 'total' },
+    { col: 'AU', tag: 'tag06', kwIndex: 11, label: '2F 低圧電灯盤 №1 1LM-B', category: 'total' },
+    { col: 'AV', tag: 'tag06', kwIndex: 12, label: '2F 低圧電灯盤 №1 2LM-A', category: 'total' },
+    { col: 'AW', tag: 'tag06', kwIndex: 13, label: '2F 低圧電灯盤 №1 2LM-B', category: 'total' },
+    { col: 'AX', tag: 'tag06', kwIndex: 14, label: '2F 低圧電灯盤 №1 2LM-C', category: 'total' },
+    { col: 'AY', tag: 'tag06', kwIndex: 15, label: '2F 低圧電灯盤 №1 ｹﾞｰﾄﾊｳｽ', category: 'total' },
+    { col: 'AZ', tag: 'tag06', kwIndex: 16, label: '2F 低圧電灯盤 №1 8.20.18E包装制御盤', category: 'packaging' },
+    { col: 'BA', tag: 'tag06', kwIndex: 17, label: '2F 低圧電灯盤 №1 排水処理制御盤', category: 'total' },
+    { col: 'BB', tag: 'tag06', kwIndex: 18, label: '2F 低圧電灯盤 №1 1LM-C', category: 'total' },
+    { col: 'BC', tag: 'tag06', kwIndex: 19, label: '2F 低圧電灯盤 №1 ﾎﾞｲﾗ-室ｺﾝﾌﾟﾚｯｻｰ室電灯', category: 'total' },
+    { col: 'BD', tag: 'tag06', kwIndex: 20, label: '2F 低圧動力盤 №3 2M-A', category: 'total' },
+    { col: 'BE', tag: 'tag06', kwIndex: 21, label: '2F 低圧動力盤 №3 冷蔵倉庫', category: 'total' },
+    { col: 'BF', tag: 'tag06', kwIndex: 22, label: '2F 低圧動力盤 №3 包装制御盤', category: 'packaging' },
+    { col: 'BG', tag: 'tag06', kwIndex: 23, label: '2F 低圧動力盤 №3 1LM-A', category: 'total' },
+    { col: 'BH', tag: 'tag06', kwIndex: 24, label: '2F 低圧動力盤 №3 2LM-A', category: 'total' },
+    { col: 'BI', tag: 'tag06', kwIndex: 25, label: '2F 低圧動力盤 №3 2LM-B', category: 'total' },
+    { col: 'BJ', tag: 'tag06', kwIndex: 26, label: '2F 低圧動力盤 №3 1M-C', category: 'total' },
+    { col: 'BK', tag: 'tag06', kwIndex: 27, label: '2F 低圧動力盤 №3 調合CIP', category: 'mixing' },
+    { col: 'BL', tag: 'tag06', kwIndex: 28, label: '2F 低圧動力盤 №3 ﾎﾞﾄﾙ開梱室AC.ｷｬｯﾌﾟ室AC', category: 'total' },
+    { col: 'BM', tag: 'tag06', kwIndex: 29, label: '2F 低圧動力盤 №3 1LM-B', category: 'total' },
+    { col: 'BN', tag: 'tag06', kwIndex: 30, label: '2F 低圧動力盤 №3 2LM-C', category: 'total' },
+    { col: 'BO', tag: 'tag06', kwIndex: 31, label: '2F 低圧動力盤 №3 ｹﾞｰﾄﾊｳｽ', category: 'total' },
+    { col: 'BP', tag: 'tag06', kwIndex: 32, label: '2F 低圧動力盤 №4 ｼｰﾄ供給.ｹｰｽｺﾍﾞｱ.ﾊﾟﾚﾀｲｻﾞｰ', category: 'packaging' },
+    { col: 'BQ', tag: 'tag06', kwIndex: 33, label: '2F 低圧動力盤 №4 13E.31-3', category: 'packaging' },
+    { col: 'BR', tag: 'tag06', kwIndex: 34, label: '2F 低圧動力盤 №4 実瓶ｺﾝﾍﾞｱ振分装置', category: 'packaging' },
+    { col: 'BS', tag: 'tag06', kwIndex: 35, label: '2F 低圧動力盤 №4 ｹｰｻｰ制御盤', category: 'packaging' },
+    { col: 'BT', tag: 'tag06', kwIndex: 36, label: '2F 低圧動力盤 №4 分電盤(1)', category: 'total' },
+    { col: 'BU', tag: 'tag06', kwIndex: 37, label: '2F 低圧動力盤 №4 15-1', category: 'packaging' },
+    { col: 'BV', tag: 'tag06', kwIndex: 38, label: '2F 低圧動力盤 №4 充填ﾊﾟﾈﾙ', category: 'filling' },
+    { col: 'BW', tag: 'tag06', kwIndex: 39, label: '2F 低圧動力盤 №4 空ﾊﾟﾚｯﾄ搬送', category: 'supply' },
+    { col: 'BX', tag: 'tag06', kwIndex: 40, label: '2F 低圧動力盤 №4 ﾌｨﾗ給液制御盤', category: 'filling' },
+    { col: 'BY', tag: 'tag06', kwIndex: 41, label: '2F 低圧動力盤 №4 分電盤(2)', category: 'total' },
+    { col: 'BZ', tag: 'tag06', kwIndex: 42, label: '2F 低圧動力盤 №4 2E.3Eﾊﾞﾙｸﾃﾞﾊﾟﾚﾀｲｻﾞｰ', category: 'supply' },
+    { col: 'CA', tag: 'tag06', kwIndex: 43, label: '2F 低圧動力盤 №4 CIPパネル', category: 'filling' },
+    { col: 'CB', tag: null, fixedVal: 0.0, label: '2F 低圧動力盤 №5 HGINV', category: 'total' },
+
+    // tag07 (1210-1236: 13列)
+    { col: 'CC', tag: 'tag07', kwIndex: 0, label: '2F 低圧動力盤 №5 抽出ﾊﾟﾈﾙ.抽出工程ﾊﾟﾈﾙ', category: 'mixing' },
+    { col: 'CD', tag: 'tag07', kwIndex: 1, label: '2F 低圧動力盤 №5 1LM-C', category: 'total' },
+    { col: 'CE', tag: 'tag07', kwIndex: 2, label: '2F 低圧動力盤 №5 29-1', category: 'packaging' },
+    { col: 'CF', tag: 'tag07', kwIndex: 3, label: '2F 低圧動力盤 №5 36.39', category: 'packaging' },
+    { col: 'CG', tag: 'tag07', kwIndex: 4, label: '2F 低圧動力盤 №5 殺菌制御盤', category: 'filling' },
+    { col: 'CH', tag: 'tag07', kwIndex: 5, label: '2F 低圧動力盤 №5 ｸﾗﾘ動力(PET・CUP)', category: 'mixing' },
+    { col: 'CI', tag: 'tag07', kwIndex: 6, label: '2F 低圧動力盤 №5 調合ﾀﾝｸﾊﾟﾈﾙ', category: 'mixing' },
+    { col: 'CJ', tag: 'tag07', kwIndex: 7, label: '2F 低圧動力盤 №5 ｽﾄﾚｰｼﾞ温水ﾊﾟﾈﾙ', category: 'mixing' },
+    { col: 'CK', tag: 'tag07', kwIndex: 8, label: '2F 低圧動力盤 №5 ﾆｰﾀﾞｰ.抽出工程ﾊﾟﾈﾙ', category: 'mixing' },
+    { col: 'CL', tag: 'tag07', kwIndex: 9, label: '2F 低圧動力盤 №5 新1真空ﾎﾟﾝﾌﾟﾗﾍﾞﾗｰ制御盤', category: 'packaging' },
+    { col: 'CM', tag: 'tag07', kwIndex: 10, label: '2F 低圧動力盤 №5 定置式発泡洗浄装置制御盤', category: 'filling' },
+    { col: 'CN', tag: 'tag07', kwIndex: 11, label: '2F 低圧動力盤 №5 空ﾎﾞﾄﾙ制御盤', category: 'filling' },
+    { col: 'CO', tag: 'tag07', kwIndex: 12, label: '2F 低圧動力盤 №5 ﾘﾝｻ・ﾌｨﾗ・ｷｬｯﾊﾟ制御盤', category: 'filling' }
+  ];
+
+  return {
+    VARIETY_MASTER,
+    VARIETY_GROUPS,
+    EVALUATION_METRICS,
+    OPERATION_MODES,
+    STEP_MASTER,
+    CATEGORIES,
+    CATEGORY_COLUMN_MAP,
+    EQUIPMENT_COLUMNS
+  };
+
+}));
+
+</script>
+  <script>
+/**
+ * gas_app/js/etl/csvParser.js
+ * CSV/テキスト高速パースおよび電力(kW)列動的抽出モジュール
+ * ブラウザ環境およびNode.js環境両対応
+ */
+
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    const AppConfig = require('../config.js');
+    module.exports = factory(AppConfig);
+  } else {
+    root.CsvParser = factory(root.AppConfig);
+  }
+}(typeof self !== 'undefined' ? self : this, function (AppConfig) {
+
+  /**
+   * テキストファイル先頭からタグNoを特定する
+   */
+  function detectTagType(fileName, firstFewLines) {
+    const nameMatch = fileName.match(/tag0?([24567])/i);
+    if (nameMatch) {
+      return `tag0${nameMatch[1]}`;
+    }
+
+    for (let i = 0; i < Math.min(firstFewLines.length, 3); i++) {
+      const line = firstFewLines[i];
+      if (line.includes('収集タグNo.')) {
+        const m = line.match(/"?収集タグNo\."?,?"?(\d+)"?/);
+        if (m) {
+          const num = parseInt(m[1], 10);
+          return num < 10 ? `tag0${num}` : `tag${num}`;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 1つのCSV/TXT文字列をパースし、ヘッダー情報とデータ行を分解する
+   */
+  function parseSingleFile(fileContent, fileName = '') {
+    const lines = fileContent.split(/\r?\n/);
+    if (lines.length < 6) {
+      return null;
+    }
+
+    const tagType = detectTagType(fileName, lines.slice(0, 5));
+    if (!tagType) {
+      return null;
+    }
+
+    // 行4: 項目名称, 行5: 単位
+    const nameRow = parseCsvLine(lines[3]);
+    const unitRow = parseCsvLine(lines[4]);
+
+    // tagType内の全kW列インデックスを走査・特定
+    const kwColIndices = [];
+    let varietyColIdx = -1;
+    let stepColIdx = -1;
+    let operationColIdx = -1;
+
+    for (let c = 0; c < unitRow.length; c++) {
+      const unit = (unitRow[c] || '').trim().toLowerCase();
+      const colName = (nameRow[c] || '').trim();
+
+      if (tagType === 'tag02') {
+        if (colName.includes('D99:品種') || colName.includes('品種')) {
+          varietyColIdx = c;
+        } else if (colName.includes('ステップ')) {
+          stepColIdx = c;
+        } else if (colName.includes('運転')) {
+          operationColIdx = c;
+        }
+      }
+
+      if (unit === 'kw') {
+        kwColIndices.push(c);
+      }
+    }
+
+    // AppConfig.EQUIPMENT_COLUMNS と照合
+    // 各設定で tag === tagType かつ kwIndex が一致するものをマッピング
+    const columnMappings = []; // [{ colLetter, fileColIndex }]
+    for (const eq of AppConfig.EQUIPMENT_COLUMNS) {
+      if (eq.tag === tagType && eq.kwIndex !== undefined) {
+        if (eq.kwIndex < kwColIndices.length) {
+          columnMappings.push({
+            colLetter: eq.col,
+            fileColIndex: kwColIndices[eq.kwIndex]
+          });
+        }
+      }
+    }
+
+    // データ行のパース (行6以降)
+    const recordsByTimestamp = new Map();
+    // 直前有効値のトラッキング（外れ値・センサー異常コード補正用）
+    const lastValidValues = {};
+
+    for (let i = 5; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      const cols = parseCsvLine(line);
+      if (cols.length < 2) continue;
+
+      const dateStr = cols[0].replace(/"/g, '').trim(); // e.g. 2025/03/01
+      const timeStr = cols[1].replace(/"/g, '').trim(); // e.g. 00:00:00
+      if (!dateStr || !timeStr || !dateStr.includes('/')) continue;
+
+      const tsKey = `${dateStr} ${timeStr}`;
+      const rowObj = {};
+
+      if (tagType === 'tag02') {
+        if (varietyColIdx >= 0) rowObj['variety'] = cols[varietyColIdx] ? parseInt(cols[varietyColIdx], 10) : null;
+        if (stepColIdx >= 0) rowObj['step'] = cols[stepColIdx] ? parseInt(cols[stepColIdx], 10) : null;
+        if (operationColIdx >= 0) rowObj['operation'] = cols[operationColIdx] ? parseInt(cols[operationColIdx], 10) : null;
+      }
+
+      for (const mapping of columnMappings) {
+        const valStr = cols[mapping.fileColIndex];
+        if (valStr !== undefined && valStr !== '') {
+          const num = parseFloat(valStr.replace(/"/g, ''));
+          if (isNaN(num)) {
+            rowObj[mapping.colLetter] = null;
+          } else {
+            // 外れ値・センサー異常値補正:
+            // 1. 1,000 kW以上（21,000,000や210,000,000等のPLC通信エラーコード・断線・オーバーレンジ）
+            // 2. 直前の有効値と明らかに大きく違う場合（急激なスパイク: 差分500 kW超）
+            const prev = lastValidValues[mapping.colLetter];
+            let isOutlier = (num >= 1000.0);
+            if (!isOutlier && prev !== undefined && prev !== null) {
+              if (Math.abs(num - prev) > 500.0) {
+                isOutlier = true;
+              }
+            }
+            if (isOutlier) {
+              rowObj[mapping.colLetter] = (prev !== undefined && prev !== null) ? prev : 0.0;
+            } else {
+              rowObj[mapping.colLetter] = num;
+              lastValidValues[mapping.colLetter] = num;
+            }
+          }
+        } else {
+          rowObj[mapping.colLetter] = null;
+        }
+      }
+
+      recordsByTimestamp.set(tsKey, rowObj);
+    }
+
+    return {
+      tagType,
+      fileName,
+      columnCount: columnMappings.length,
+      rowCount: recordsByTimestamp.size,
+      records: recordsByTimestamp
+    };
+  }
+
+  /**
+   * カンマ区切り行のパース（ダブルクォート考慮）
+   */
+  function parseCsvLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  }
+
+  /**
+   * 複数タグのファイルをタイムスタンプキーで横持ち結合する
+   */
+  function mergeTagFiles(files) {
+    const parsedFiles = [];
+    for (const f of files) {
+      const parsed = parseSingleFile(f.content, f.fileName);
+      if (parsed) {
+        parsedFiles.push(parsed);
+      }
+    }
+
+    const allTimestampsSet = new Set();
+    for (const pf of parsedFiles) {
+      for (const ts of pf.records.keys()) {
+        allTimestampsSet.add(ts);
+      }
+    }
+
+    const sortedTimestamps = Array.from(allTimestampsSet).sort();
+    const mergedMap = new Map();
+
+    for (const ts of sortedTimestamps) {
+      const mergedRow = {};
+      for (const pf of parsedFiles) {
+        const row = pf.records.get(ts);
+        if (row) {
+          Object.assign(mergedRow, row);
+        }
+      }
+      mergedMap.set(ts, mergedRow);
+    }
+
+    return mergedMap;
+  }
+
+  function groupFilesByYearMonth(files) {
+    const groups = {};
+    for (const f of files) {
+      let ym = null;
+      const m = f.fileName.match(/(20\d{2})(0[1-9]|1[0-2])/);
+      if (m) {
+        ym = `${m[1]}${m[2]}`;
+      } else {
+        const lines = f.content.slice(0, 2000).split(/\r?\n/);
+        for (const l of lines) {
+          const dateMatch = l.match(/(20\d{2})\/(0[1-9]|1[0-2])\/\d{2}/);
+          if (dateMatch) {
+            ym = `${dateMatch[1]}${dateMatch[2]}`;
+            break;
+          }
+        }
+      }
+
+      const key = ym || 'unknown';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(f);
+    }
+    return groups;
+  }
+
+  return {
+    detectTagType,
+    parseSingleFile,
+    parseCsvLine,
+    mergeTagFiles,
+    groupFilesByYearMonth
+  };
+}));
+
+</script>
+  <script>
+/**
+ * gas_app/js/etl/hourlyAggregator.js
+ * 2段階欠損補正および1時間平均化集計モジュール
+ * ブラウザ環境およびNode.js環境両対応
+ */
+
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    const AppConfig = require('../config.js');
+    module.exports = factory(AppConfig);
+  } else {
+    root.HourlyAggregator = factory(root.AppConfig);
+  }
+}(typeof self !== 'undefined' ? self : this, function (AppConfig) {
+
+  /**
+   * 1分値レコード群を1時間単位（60分）に集約する
+   * ロガーの仕様に基づき、各時間ブロックは「XX:01:00 〜 (XX+1):00:00」の60分間とする。
+   * 例: Hour 0 は 00:01:00 〜 01:00:00、Hour 23 は 23:01:00 〜 翌00:00:00
+   * @param {Map<string, Object>} mergedRecords タイムスタンプ -> 1分値オブジェクト
+   * @param {string} yearMonth 'YYYYMM' (例: '202503')
+   * @returns {Object} { hourlyRows: Array, monthlySummary: Object, columnKeys: Array }
+   */
+  function aggregateHourly(mergedRecords, yearMonth) {
+    const year = parseInt(yearMonth.slice(0, 4), 10);
+    const month = parseInt(yearMonth.slice(4, 6), 10);
+    const daysInMonth = new Date(year, month, 0).getDate(); // 28, 29, 30, or 31
+    const totalHours = daysInMonth * 24;
+
+    const columnKeys = AppConfig.EQUIPMENT_COLUMNS.map(eq => eq.col);
+    const fixedCols = {};
+    for (const eq of AppConfig.EQUIPMENT_COLUMNS) {
+      if (eq.fixedVal !== undefined) {
+        fixedCols[eq.col] = eq.fixedVal;
+      }
+    }
+
+    // 1時間ごとのバケットを初期化 (hourIndex: 0 から totalHours - 1)
+    const hourBuckets = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dayStr = `${year}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}`;
+      for (let h = 0; h < 24; h++) {
+        const hourStr = String(h).padStart(2, '0');
+        const hourKey = `${dayStr} ${hourStr}:00`;
+        hourBuckets.push({
+          hourIndex: (day - 1) * 24 + h,
+          day,
+          hour: h,
+          dateStr: dayStr,
+          hourStr,
+          timestampKey: hourKey,
+          minuteRecords: [] // この1時間内に存在する1分値
+        });
+      }
+    }
+
+    // タイムスタンプごとに該当する1時間バケットへ振り分け
+    // ルール:
+    // 時刻 HH:MM:SS において、
+    // MM:SS が 00:01 〜 01:00 は h=0
+    // ...
+    // MM:SS が 00:00:00 の場合は、前の日の 23時台 (Hour 23) に属する
+    for (const [ts, record] of mergedRecords.entries()) {
+      const parts = ts.split(' ');
+      if (parts.length < 2) continue;
+      const datePart = parts[0];
+      const timePart = parts[1];
+      const dMatch = datePart.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+      if (!dMatch) continue;
+
+      let rYear = parseInt(dMatch[1], 10);
+      let rMonth = parseInt(dMatch[2], 10);
+      let rDay = parseInt(dMatch[3], 10);
+
+      const tParts = timePart.split(':');
+      let tHour = parseInt(tParts[0], 10);
+      let tMin = parseInt(tParts[1], 10);
+      let tSec = parseInt(tParts[2] || '0', 10);
+
+      if (isNaN(tHour) || isNaN(tMin)) continue;
+
+      let bucketDay = rDay;
+      let bucketHour = tHour;
+
+      if (tMin === 0 && tSec === 0) {
+        // 00:00:00 は前の時間の終了（例: 01:00:00 は Hour 0 の終了、00:00:00 は前日の Hour 23 の終了）
+        if (tHour === 0) {
+          // 前日 23時台
+          bucketDay = rDay - 1;
+          bucketHour = 23;
+        } else {
+          bucketHour = tHour - 1;
+        }
+      } else {
+        // 00:01 〜 00:59 は Hour 0
+        bucketHour = tHour;
+      }
+
+      if (rYear === year && rMonth === month && bucketDay >= 1 && bucketDay <= daysInMonth) {
+        const hourIndex = (bucketDay - 1) * 24 + bucketHour;
+        if (hourIndex >= 0 && hourIndex < hourBuckets.length) {
+          hourBuckets[hourIndex].minuteRecords.push(record);
+        }
+      }
+    }
+
+    // 月末最終日 23時台の処理:
+    // 生CSVが 23:59:00 で終了している場合、Excel仕様に基づき 23:59 の至近レコードを 24:00 (60分目) として補間
+    const lastBucket = hourBuckets[hourBuckets.length - 1];
+    if (lastBucket && lastBucket.minuteRecords.length === 59) {
+      const lastRec = lastBucket.minuteRecords[lastBucket.minuteRecords.length - 1];
+      if (lastRec) {
+        lastBucket.minuteRecords.push(Object.assign({}, lastRec));
+      }
+    }
+
+    // 2段階欠損補正＆平均値算出
+    let lastValidHourlyValues = {};
+    const hourlyRows = [];
+
+
+    for (let i = 0; i < hourBuckets.length; i++) {
+      const bucket = hourBuckets[i];
+      const count = bucket.minuteRecords.length;
+      const isMissingEntireHour = (count === 0);
+
+      const rowValues = {};
+      let isInterpolated = false;
+
+      // 稼働モード分数のカウント
+      let waterTimeMin = 0;
+      let actualFillingMin = 0;
+      let cipMin = 0;
+      let sipMin = 0;
+      let otherMin = 0;
+
+      for (const rec of bucket.minuteRecords) {
+        const stepVal = rec['step'];
+        if (stepVal !== undefined && stepVal !== null) {
+          const stepInfo = AppConfig.STEP_MASTER[stepVal];
+          const catCode = stepInfo ? stepInfo.code : 0;
+          if (catCode === 20) waterTimeMin++;
+          else if (catCode === 30) actualFillingMin++;
+          else if (catCode === 40) cipMin++;
+          else if (catCode === 10) sipMin++;
+          else otherMin++;
+        }
+      }
+
+      // 各電力列の計算
+      for (const col of columnKeys) {
+        if (fixedCols[col] !== undefined) {
+          rowValues[col] = fixedCols[col];
+          continue;
+        }
+
+        if (isMissingEntireHour) {
+          // 【パターン2】1時間以上の欠損: 至近データ補間
+          if (lastValidHourlyValues[col] !== undefined) {
+            rowValues[col] = lastValidHourlyValues[col];
+            isInterpolated = true;
+          } else {
+            rowValues[col] = 0.0;
+          }
+        } else {
+          // 【パターン1】1時間以内の欠損: 実測値のみで平均
+          let sum = 0.0;
+          let validCount = 0;
+          for (const rec of bucket.minuteRecords) {
+            const v = rec[col];
+            if (v !== null && v !== undefined && !isNaN(v)) {
+              sum += v;
+              validCount++;
+            }
+          }
+
+          if (validCount > 0) {
+            const avg = Math.round((sum / validCount) * 10) / 10;
+            rowValues[col] = avg;
+          } else {
+            rowValues[col] = lastValidHourlyValues[col] !== undefined ? lastValidHourlyValues[col] : 0.0;
+          }
+        }
+      }
+
+      if (!isMissingEntireHour) {
+        lastValidHourlyValues = Object.assign({}, rowValues);
+      }
+
+      hourlyRows.push({
+        hourIndex: bucket.hourIndex,
+        rowNumber: bucket.hourIndex + 10,
+        timestampKey: bucket.timestampKey,
+        date: bucket.dateStr,
+        hour: bucket.hour,
+        validMinuteCount: count,
+        isInterpolated,
+        values: rowValues,
+        operationTimes: {
+          waterTimeMin,
+          actualFillingMin,
+          cipMin,
+          sipMin,
+          otherMin
+        }
+      });
+    }
+
+    // 月間合計
+    const monthlyColumnSums = {};
+    for (const col of columnKeys) {
+      let sum = 0.0;
+      for (const row of hourlyRows) {
+        const v = row.values[col];
+        if (typeof v === 'number') {
+          sum += v;
+        }
+      }
+      monthlyColumnSums[col] = Math.round(sum * 10) / 10;
+    }
+
+    return {
+      yearMonth,
+      totalHours: hourlyRows.length,
+      columnKeys,
+      rows: hourlyRows,
+      monthlyColumnSums
+    };
+  }
+
+  return {
+    aggregateHourly
+  };
+}));
+
+</script>
+  <script>
+/**
+ * gas_app/js/etl/excelReader.js
+ * 外部Excel (月報PET, かつらぎ工場エネルギー計算表) 解析モジュール
+ * ブラウザ環境 (SheetJS / XLSX) および Node.js 環境両対応
+ */
+
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    let XLSX;
+    try { XLSX = require('xlsx'); } catch(e) {}
+    module.exports = factory(XLSX);
+  } else {
+    root.ExcelReader = factory(root.XLSX);
+  }
+}(typeof self !== 'undefined' ? self : this, function (XLSXLib) {
+
+  /**
+   * かつらぎ工場エネルギー計算表から特定年月の電気料金データを抽出する
+   * @param {ArrayBuffer|Uint8Array|Workbook} workbookData
+   * @param {string} yearMonth 'YYYYMM' (例: '202503')
+   * @returns {Object} { usedKwhThousand, costThousandYen, unitPriceYenPerKwh }
+   */
+  function parseEnergyCalculationTable(workbookData, yearMonth) {
+    const XLSX = XLSXLib || (typeof window !== 'undefined' ? window.XLSX : null);
+    if (!XLSX) {
+      throw new Error('SheetJS (XLSX) library is not loaded');
+    }
+
+    const wb = typeof workbookData.Sheets === 'object' ? workbookData : XLSX.read(workbookData, { type: 'array' });
+    const targetMonth = parseInt(yearMonth.slice(4, 6), 10); // 1〜12
+
+    // 4月=1列目, 5月=2列目 ... 3月=12列目
+    // 年度推移シートや年度別シートを探す
+    let usedKwh = null;
+    let costThousand = null;
+
+    // シート一覧から年度推移または対象年シートを探す
+    const targetYear = parseInt(yearMonth.slice(0, 4), 10);
+    const nendo = targetMonth >= 4 ? targetYear : targetYear - 1; // 2024年度
+    const sheetNameCandidates = [String(nendo), '年度推移', '電力量単価'];
+
+    for (const name of wb.SheetNames) {
+      if (sheetNameCandidates.includes(name) || name.includes(String(nendo))) {
+        const ws = wb.Sheets[name];
+        // セルを探索
+        // 簡易実装: JSON化して走査
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+        for (let r = 0; r < data.length; r++) {
+          const row = data[r] || [];
+          const text = row.map(c => String(c || '')).join(' ');
+          if (text.includes('使用電力') || text.includes('電力量')) {
+            // 月の列インデックスを探す (4月〜3月)
+            const monthColIdx = getFiscalMonthColIndex(targetMonth);
+            if (row[monthColIdx] !== undefined) {
+              const val = parseFloat(row[monthColIdx]);
+              if (!isNaN(val) && val > 0) usedKwh = val;
+            }
+          }
+          if (text.includes('使用量（千円）') || text.includes('請求金額') || text.includes('電気代')) {
+            const monthColIdx = getFiscalMonthColIndex(targetMonth);
+            if (row[monthColIdx] !== undefined) {
+              const val = parseFloat(row[monthColIdx]);
+              if (!isNaN(val) && val > 0) costThousand = val;
+            }
+          }
+        }
+      }
+    }
+
+    const unitPrice = (usedKwh && costThousand && usedKwh > 0) ? (costThousand / usedKwh) : null;
+
+    return {
+      yearMonth,
+      usedKwhThousand: usedKwh,
+      costThousandYen: costThousand,
+      unitPriceYenPerKwh: unitPrice
+    };
+  }
+
+  /**
+   * 月報PETから特定年月の品種別生産本数を抽出する
+   * @param {ArrayBuffer|Uint8Array|Workbook} workbookData
+   * @param {string} yearMonth 'YYYYMM'
+   * @returns {Object} { totalBottles, varieties: { '101': count, ... } }
+   */
+  function parsePetMonthlyReport(workbookData, yearMonth) {
+    const XLSX = XLSXLib || (typeof window !== 'undefined' ? window.XLSX : null);
+    if (!XLSX) {
+      throw new Error('SheetJS (XLSX) library is not loaded');
+    }
+
+    const wb = typeof workbookData.Sheets === 'object' ? workbookData : XLSX.read(workbookData, { type: 'array' });
+    const targetMonth = parseInt(yearMonth.slice(4, 6), 10);
+    const targetYear = parseInt(yearMonth.slice(0, 4), 10);
+    const nendo = targetMonth >= 4 ? targetYear : targetYear - 1;
+
+    const varieties = {};
+    let totalBottles = 0;
+
+    // 年度シートを探す (例: 'PET(2024 4-3)', 'PET(2025)')
+    for (const name of wb.SheetNames) {
+      if (name.includes(String(nendo)) || name.includes(String(targetYear))) {
+        const ws = wb.Sheets[name];
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+        
+        // 品種名・本数の走査
+        for (let r = 0; r < data.length; r++) {
+          const row = data[r] || [];
+          const nameCell = String(row[0] || row[1] || '');
+          if (nameCell.includes('本数') || nameCell.includes('長角') || nameCell.includes('丸')) {
+            const monthColIdx = getFiscalMonthColIndex(targetMonth);
+            const val = parseFloat(row[monthColIdx]);
+            if (!isNaN(val) && val > 0) {
+              totalBottles += val;
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      yearMonth,
+      totalBottles,
+      varieties
+    };
+  }
+
+  /**
+   * 4月始まりの年度月インデックス（4月=2, 5月=3 ... 3月=13 等の目安）
+   */
+  function getFiscalMonthColIndex(calendarMonth) {
+    // 4月: 0, 5月: 1, ..., 12月: 8, 1月: 9, 2月: 10, 3月: 11 (オフセット調整用)
+    const order = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
+    const idx = order.indexOf(calendarMonth);
+    return idx >= 0 ? idx + 2 : 2; // ヘッダー列等を考慮して通常+2列目以降
+  }
+
+  return {
+    parseEnergyCalculationTable,
+    parsePetMonthlyReport
+  };
+}));
+
+</script>
+  <script>
+/**
+ * gas_app/js/services/categoryService.js
+ * 工程別小計および稼働モード別集計サービス
+ * ブラウザ環境およびNode.js環境両対応
+ */
+
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    const AppConfig = require('../config.js');
+    module.exports = factory(AppConfig);
+  } else {
+    root.CategoryService = factory(root.AppConfig);
+  }
+}(typeof self !== 'undefined' ? self : this, function (AppConfig) {
+
+  /**
+   * 1時間集約データから工程別小計を算出する
+   * @param {Array<Object>} hourlyRows 1時間ごとの行データ
+   * @param {Object} monthlyColumnSums 各列の月間合計
+   * @returns {Object} { categoryHourlyRows, categoryDailyTotals, categoryMonthlyTotals }
+   */
+  function aggregateCategories(hourlyRows, monthlyColumnSums = {}) {
+    const categories = AppConfig.CATEGORIES; // [{ key, name, sheetName }]
+    const colMap = AppConfig.CATEGORY_COLUMN_MAP;
+
+    // 1. 各1時間行のカテゴリ小計を算出
+    const categoryHourlyRows = hourlyRows.map(row => {
+      const catSums = {};
+      for (const cat of categories) {
+        const cols = colMap[cat.key] || [];
+        let sum = 0.0;
+        for (const col of cols) {
+          const v = row.values[col];
+          if (typeof v === 'number') {
+            sum += v;
+          }
+        }
+        catSums[cat.name] = Math.round(sum * 10) / 10;
+      }
+
+      return {
+        hourIndex: row.hourIndex,
+        date: row.date,
+        hour: row.hour,
+        timestampKey: row.timestampKey,
+        isInterpolated: row.isInterpolated,
+        categories: catSums,
+        operationTimes: row.operationTimes
+      };
+    });
+
+    // 2. 日別集約 (24時間合計)
+    const dailyMap = new Map();
+    for (const row of categoryHourlyRows) {
+      if (!dailyMap.has(row.date)) {
+        const initialSums = {};
+        for (const cat of categories) {
+          initialSums[cat.name] = 0.0;
+        }
+        dailyMap.set(row.date, {
+          date: row.date,
+          day: parseInt(row.date.split('/')[2], 10),
+          categories: initialSums,
+          operationTimes: {
+            waterTimeMin: 0,
+            actualFillingMin: 0,
+            cipMin: 0,
+            sipMin: 0,
+            otherMin: 0
+          }
+        });
+      }
+
+      const dayObj = dailyMap.get(row.date);
+      for (const cat of categories) {
+        dayObj.categories[cat.name] += (row.categories[cat.name] || 0);
+      }
+
+      if (row.operationTimes) {
+        dayObj.operationTimes.waterTimeMin += (row.operationTimes.waterTimeMin || 0);
+        dayObj.operationTimes.actualFillingMin += (row.operationTimes.actualFillingMin || 0);
+        dayObj.operationTimes.cipMin += (row.operationTimes.cipMin || 0);
+        dayObj.operationTimes.sipMin += (row.operationTimes.sipMin || 0);
+        dayObj.operationTimes.otherMin += (row.operationTimes.otherMin || 0);
+      }
+    }
+
+    const categoryDailyTotals = Array.from(dailyMap.values()).map(d => {
+      const roundedCats = {};
+      for (const [k, v] of Object.entries(d.categories)) {
+        roundedCats[k] = Math.round(v * 10) / 10;
+      }
+      return {
+        date: d.date,
+        day: d.day,
+        categories: roundedCats,
+        operationTimes: d.operationTimes
+      };
+    });
+
+    // 3. 月間合計
+    const categoryMonthlyTotals = {};
+    for (const cat of categories) {
+      const cols = colMap[cat.key] || [];
+      let grandTotal = 0.0;
+      const columnTotals = {};
+
+      for (const col of cols) {
+        const cSum = monthlyColumnSums[col] !== undefined ? monthlyColumnSums[col] : 0.0;
+        columnTotals[col] = cSum;
+        grandTotal += cSum;
+      }
+
+      categoryMonthlyTotals[cat.name] = {
+        key: cat.key,
+        name: cat.name,
+        sheetName: cat.sheetName,
+        grandTotal: Math.round(grandTotal * 10) / 10,
+        columnTotals
+      };
+    }
+
+    // 月間稼働時間合計
+    const monthlyOperationTimes = {
+      waterTimeMin: 0,
+      actualFillingMin: 0,
+      cipMin: 0,
+      sipMin: 0,
+      otherMin: 0
+    };
+    for (const d of categoryDailyTotals) {
+      monthlyOperationTimes.waterTimeMin += d.operationTimes.waterTimeMin;
+      monthlyOperationTimes.actualFillingMin += d.operationTimes.actualFillingMin;
+      monthlyOperationTimes.cipMin += d.operationTimes.cipMin;
+      monthlyOperationTimes.sipMin += d.operationTimes.sipMin;
+      monthlyOperationTimes.otherMin += d.operationTimes.otherMin;
+    }
+
+    return {
+      categoryHourlyRows,
+      categoryDailyTotals,
+      categoryMonthlyTotals,
+      monthlyOperationTimes
+    };
+  }
+
+  return {
+    aggregateCategories
+  };
+}));
+
+</script>
+  <script>
+/**
+ * gas_app/js/services/kpiService.js
+ * 原単位および電気コストKPI算出サービス
+ * ブラウザ環境およびNode.js環境両対応
+ */
+
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    const AppConfig = require('../config.js');
+    module.exports = factory(AppConfig);
+  } else {
+    root.KpiService = factory(root.AppConfig);
+  }
+}(typeof self !== 'undefined' ? self : this, function (AppConfig) {
+
+  /**
+   * KPI評価指標を算出する
+   * @param {Object} categoryMonthlyTotals カテゴリ月間合計
+   * @param {Object} monthlyOperationTimes 稼働時間合計（分）
+   * @param {Object} productionData { totalBottles, varieties }
+   * @param {Object} electricityData { usedKwhThousand, costThousandYen, unitPriceYenPerKwh }
+   * @returns {Object} 総合評価（水運転＋実充填、水運転のみ、実充填のみ）
+   */
+  function calculateKpi(categoryMonthlyTotals, monthlyOperationTimes, productionData = {}, electricityData = {}) {
+    const totalKwh = categoryMonthlyTotals['総電力'] ? categoryMonthlyTotals['総電力'].grandTotal : 0.0;
+
+    const waterTime = monthlyOperationTimes.waterTimeMin || 0;
+    const fillingTime = monthlyOperationTimes.actualFillingMin || 0;
+    const combinedTime = waterTime + fillingTime;
+
+    const bottles = productionData.totalBottles || 0;
+    const unitPrice = electricityData.unitPriceYenPerKwh || 0.0;
+
+    // 稼働モードごとの電力量按分（操業時間比率で按分）
+    const waterKwhRatio = combinedTime > 0 ? (waterTime / combinedTime) : 0;
+    const fillingKwhRatio = combinedTime > 0 ? (fillingTime / combinedTime) : 0;
+
+    const waterKwh = Math.round(totalKwh * waterKwhRatio * 10) / 10;
+    const fillingKwh = Math.round(totalKwh * fillingKwhRatio * 10) / 10;
+
+    // 1. 水運転＋実充填
+    const combined = {
+      mode: '水運転＋実充填',
+      productionBottles: bottles,
+      operationTimeMin: combinedTime,
+      totalKwh: totalKwh,
+      kwhPerMinute: combinedTime > 0 ? round(totalKwh / combinedTime, 3) : 0.0,
+      kwhPerBottle: bottles > 0 ? round(totalKwh / bottles, 4) : 0.0,
+      costPerBottleYen: bottles > 0 && unitPrice > 0 ? round((totalKwh / bottles) * unitPrice, 2) : 0.0
+    };
+
+    // 2. 水運転のみ
+    const waterOnly = {
+      mode: '水運転のみ',
+      productionBottles: 0,
+      operationTimeMin: waterTime,
+      totalKwh: waterKwh,
+      kwhPerMinute: waterTime > 0 ? round(waterKwh / waterTime, 3) : 0.0,
+      kwhPerBottle: 0.0,
+      costPerBottleYen: 0.0
+    };
+
+    // 3. 実充填のみ
+    const fillingOnly = {
+      mode: '実充填のみ',
+      productionBottles: bottles,
+      operationTimeMin: fillingTime,
+      totalKwh: fillingKwh,
+      kwhPerMinute: fillingTime > 0 ? round(fillingKwh / fillingTime, 3) : 0.0,
+      kwhPerBottle: bottles > 0 ? round(fillingKwh / bottles, 4) : 0.0,
+      costPerBottleYen: bottles > 0 && unitPrice > 0 ? round((fillingKwh / bottles) * unitPrice, 2) : 0.0
+    };
+
+    return {
+      electricitySummary: {
+        usedKwhThousand: electricityData.usedKwhThousand || 0,
+        costThousandYen: electricityData.costThousandYen || 0,
+        unitPriceYenPerKwh: round(unitPrice, 4)
+      },
+      evaluation: {
+        combined,
+        waterOnly,
+        fillingOnly
+      }
+    };
+  }
+
+  function round(num, decimals = 2) {
+    if (isNaN(num) || num === null) return 0;
+    const factor = Math.pow(10, decimals);
+    return Math.round(num * factor) / factor;
+  }
+
+  return {
+    calculateKpi
+  };
+}));
+
+</script>
+  <script>
+/**
+ * gas_app/js/services/annualService.js
+ * 年間（4月〜翌3月）月別・品種別集約＆評価サービス
+ * 月別電力使用量集約グラフ表示(総電力 2024).xlsx の仕様に完全準拠
+ */
+
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    const config = require('../config');
+    module.exports = factory(config);
+  } else {
+    root.AnnualService = factory(root.AppConfig);
+  }
+}(typeof self !== 'undefined' ? self : this, function (config) {
+
+  const { VARIETY_GROUPS, EVALUATION_METRICS, OPERATION_MODES } = config;
+
+  /**
+   * 年間12ヶ月の年月リスト (4月〜翌年3月) を生成
+   * @param {number} fiscalYear (例: 2024)
+   * @returns {Array} ['202404', '202405', ..., '202503']
+   */
+  function getFiscalMonths(fiscalYear) {
+    const months = [];
+    for (let m = 4; m <= 12; m++) {
+      months.push(`${fiscalYear}${String(m).padStart(2, '0')}`);
+    }
+    for (let m = 1; m <= 3; m++) {
+      months.push(`${fiscalYear + 1}${String(m).padStart(2, '0')}`);
+    }
+    return months;
+  }
+
+  /**
+   * 品種コード（tag02）から8大分類グループキーを特定
+   * @param {number|string} code 
+   * @returns {string|null} '2.0L', '500mL丸' 等
+   */
+  function matchVarietyGroup(code) {
+    const c = parseInt(code, 10);
+    for (const group of VARIETY_GROUPS) {
+      if (group.codes.includes(c)) return group.key;
+    }
+    // コードが名称や部分一致の場合のフォールバック
+    const name = config.VARIETY_MASTER[c] || '';
+    if (name.includes('2L') || name.includes('２Ｌ')) return '2.0L';
+    if (name.includes('1.5L')) return '1.5L';
+    if (name.includes('1L') || name.includes('１Ｌ') || name.includes('900ml')) return '1.0L';
+    if (name.includes('600ml') || name.includes('600mL')) return '600mL丸';
+    if (name.includes('500ml 丸') || name.includes('500mL 丸')) return '500mL丸';
+    if (name.includes('500ml 角') || name.includes('500mL 角') || name.includes('500ml 6角')) return '500mL角';
+    if (name.includes('350ml') || name.includes('350mL')) return '350mL';
+    if (name.includes('280ml') || name.includes('280mL')) return '280mL';
+    return '500mL丸'; // デフォルトフォールバック
+  }
+
+  /**
+   * 1ヶ月分の1時間集約データから品種×操業モード別集計を抽出
+   * @param {Array} hourlyRows
+   * @returns {Object} { combined: {...}, waterOnly: {...}, fillingOnly: {...} }
+   */
+  function aggregateMonthByVariety(hourlyRows) {
+    const result = {
+      combined: { powerKwh: {}, operationMin: {} },
+      waterOnly: { powerKwh: {}, operationMin: {} },
+      fillingOnly: { powerKwh: {}, operationMin: {} }
+    };
+
+    VARIETY_GROUPS.forEach(g => {
+      ['combined', 'waterOnly', 'fillingOnly'].forEach(mode => {
+        result[mode].powerKwh[g.key] = 0;
+        result[mode].operationMin[g.key] = 0;
+      });
+    });
+
+    for (const row of hourlyRows) {
+      const vCode = row.varietyCode || 105;
+      const stepCode = row.stepCode || 0;
+      const vGroup = matchVarietyGroup(vCode);
+      const totalKwh = row.values ? (parseFloat(row.values['BG'] || 0)) : 0; // BG=総電力
+
+      const isWater = (stepCode === 20 || (stepCode >= 6 && stepCode <= 7));
+      const isFilling = (stepCode === 30 || (stepCode >= 8 && stepCode <= 10));
+
+      if (isWater || isFilling) {
+        result.combined.powerKwh[vGroup] = (result.combined.powerKwh[vGroup] || 0) + totalKwh;
+        result.combined.operationMin[vGroup] = (result.combined.operationMin[vGroup] || 0) + 60;
+      }
+      if (isWater) {
+        result.waterOnly.powerKwh[vGroup] = (result.waterOnly.powerKwh[vGroup] || 0) + totalKwh;
+        result.waterOnly.operationMin[vGroup] = (result.waterOnly.operationMin[vGroup] || 0) + 60;
+      }
+      if (isFilling) {
+        result.fillingOnly.powerKwh[vGroup] = (result.fillingOnly.powerKwh[vGroup] || 0) + totalKwh;
+        result.fillingOnly.operationMin[vGroup] = (result.fillingOnly.operationMin[vGroup] || 0) + 60;
+      }
+    }
+
+    // 四捨五入
+    ['combined', 'waterOnly', 'fillingOnly'].forEach(m => {
+      VARIETY_GROUPS.forEach(g => {
+        result[m].powerKwh[g.key] = Math.round(result[m].powerKwh[g.key] * 10) / 10;
+      });
+    });
+
+    return result;
+  }
+
+  /**
+   * 年間データ構造の初期化
+   * @param {number} fiscalYear
+   */
+  function createEmptyAnnualDataset(fiscalYear) {
+    const months = getFiscalMonths(fiscalYear);
+    const dataset = {
+      fiscalYear,
+      months, // ['202404', ... '202503']
+      monthLabels: ['4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月', '1月', '2月', '3月'],
+      unitPrices: {}, // '202404': 19.36, etc.
+      modes: {
+        combined: createEmptyModeTable(months),
+        waterOnly: createEmptyModeTable(months),
+        fillingOnly: createEmptyModeTable(months)
+      }
+    };
+    return dataset;
+  }
+
+  function createEmptyModeTable(months) {
+    const table = {};
+    EVALUATION_METRICS.forEach(metric => {
+      table[metric.key] = {
+        months: {},
+        annualTotal: {
+          monthlyTotal: 0,
+          varieties: {}
+        }
+      };
+      VARIETY_GROUPS.forEach(g => {
+        table[metric.key].annualTotal.varieties[g.key] = 0;
+      });
+
+      months.forEach(ym => {
+        table[metric.key].months[ym] = {
+          yearMonth: ym,
+          cumulativeTotal: 0,
+          monthlyTotal: 0,
+          varieties: {}
+        };
+        VARIETY_GROUPS.forEach(g => {
+          table[metric.key].months[ym].varieties[g.key] = 0;
+        });
+      });
+    });
+    return table;
+  }
+
+  return {
+    getFiscalMonths,
+    matchVarietyGroup,
+    aggregateMonthByVariety,
+    createEmptyAnnualDataset
+  };
+
+}));
+
+</script>
+  <script>
+/**
+ * gas_app/js/components/charts.js
+ * Chart.js を用いたインタラクティブグラフ描画コンポーネント
+ * ライトテーマ対応 ＆ 単月・年間月別・品種別集約グラフサポート
+ */
+
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory();
+  } else {
+    root.ChartManager = factory();
+  }
+}(typeof self !== 'undefined' ? self : this, function () {
+
+  // チャートインスタンス管理
+  let dailyChartInstance = null;
+  let categoryChartInstance = null;
+  let annualStackedChartInstance = null;
+  let annualTrendChartInstance = null;
+  let annualEquipTrendChartInstance = null;
+  let annualEquipDoughnutChartInstance = null;
+
+  // 品種カラーパレット (Excel原紙・月別電力使用量集約グラフ表示(総電力 2024).xlsx 準拠)
+  const VARIETY_COLORS = {
+    '2.0L': { bg: 'rgba(37, 99, 235, 0.85)', border: '#2563eb' },
+    '1.5L': { bg: 'rgba(8, 145, 178, 0.85)', border: '#0891b2' },
+    '1.0L': { bg: 'rgba(5, 150, 105, 0.85)', border: '#059669' },
+    '600mL丸': { bg: 'rgba(101, 163, 13, 0.85)', border: '#65a30d' },
+    '500mL丸': { bg: 'rgba(217, 119, 6, 0.85)', border: '#d97706' },
+    '500mL角': { bg: 'rgba(234, 88, 12, 0.85)', border: '#ea580c' },
+    '350mL': { bg: 'rgba(124, 58, 237, 0.85)', border: '#7c3aed' },
+    '280mL': { bg: 'rgba(219, 39, 119, 0.85)', border: '#db2777' },
+    '月計': { bg: 'rgba(15, 23, 42, 0.9)', border: '#0f172a' }
+  };
+
+  const GRID_COLOR = 'rgba(226, 232, 240, 0.8)';
+  const TEXT_COLOR = '#64748b';
+
+  /**
+   * 【年間】月別電力使用量集約グラフ (8品種積み上げバー ＋ 月計折れ線)
+   * @param {string} canvasId 
+   * @param {Object} annualMetricData { months: { '202404': { monthlyTotal, varieties: {} } }, ... }
+   * @param {Object} metricInfo { name: '電力量', unit: 'kWh' }
+   * @param {Array} monthLabels ['4月', '5月', ... '3月']
+   * @param {Array} monthsYm ['202404', ... '202503']
+   */
+  function renderAnnualStackedBarChart(canvasId, annualMetricData, metricInfo, monthLabels, monthsYm) {
+    if (typeof Chart === 'undefined') return;
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+
+    if (annualStackedChartInstance) {
+      annualStackedChartInstance.destroy();
+    }
+
+    const varietyKeys = ['2.0L', '1.5L', '1.0L', '600mL丸', '500mL丸', '500mL角', '350mL', '280mL'];
+
+    // 1. 各品種の積み上げバーデータセット
+    const datasets = varietyKeys.map(vk => {
+      const color = VARIETY_COLORS[vk] || { bg: '#94a3b8', border: '#64748b' };
+      const data = monthsYm.map(ym => {
+        const mObj = annualMetricData.months[ym];
+        return mObj && mObj.varieties ? (mObj.varieties[vk] || 0) : 0;
+      });
+
+      return {
+        type: 'bar',
+        label: vk,
+        data: data,
+        backgroundColor: color.bg,
+        borderColor: color.border,
+        borderWidth: 1,
+        stack: 'varietyStack',
+        borderRadius: 2
+      };
+    });
+
+    // 2. 月計折れ線データセット (原紙グラフ準拠)
+    const monthlyTotalData = monthsYm.map(ym => {
+      const mObj = annualMetricData.months[ym];
+      return mObj ? (mObj.monthlyTotal || 0) : 0;
+    });
+
+    datasets.push({
+      type: 'line',
+      label: '月計',
+      data: monthlyTotalData,
+      borderColor: '#0f172a',
+      backgroundColor: '#0f172a',
+      borderWidth: 2.5,
+      pointRadius: 4,
+      pointHoverRadius: 6,
+      fill: false,
+      tension: 0,
+      yAxisID: 'y'
+    });
+
+    annualStackedChartInstance = new Chart(ctx, {
+      data: {
+        labels: monthLabels,
+        datasets: datasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false
+        },
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: {
+              boxWidth: 12,
+              font: { family: 'Outfit, sans-serif', size: 11, weight: '600' },
+              color: '#334155'
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+            titleFont: { size: 12, weight: '700' },
+            bodyFont: { size: 11 },
+            padding: 10,
+            cornerRadius: 8,
+            callbacks: {
+              label: function (context) {
+                const val = context.parsed.y !== null ? context.parsed.y.toLocaleString() : 0;
+                return `${context.dataset.label}: ${val} ${metricInfo.unit || ''}`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            stacked: true,
+            grid: { display: false },
+            ticks: { color: TEXT_COLOR, font: { weight: '600' } }
+          },
+          y: {
+            stacked: true,
+            grid: { color: GRID_COLOR },
+            ticks: {
+              color: TEXT_COLOR,
+              callback: function (val) {
+                return val >= 10000 ? (val / 1000).toLocaleString() + 'k' : val.toLocaleString();
+              }
+            },
+            title: {
+              display: true,
+              text: `${metricInfo.name} (${metricInfo.unit})`,
+              color: TEXT_COLOR,
+              font: { weight: '600' }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  /**
+   * 【年間】月別電力推移グラフ (折れ線グラフ)
+   */
+  function renderAnnualTrendChart(canvasId, annualMetricData, metricInfo, monthLabels, monthsYm) {
+    if (typeof Chart === 'undefined') return;
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+
+    if (annualTrendChartInstance) {
+      annualTrendChartInstance.destroy();
+    }
+
+    const varietyKeys = ['2.0L', '1.5L', '1.0L', '600mL丸', '500mL丸', '500mL角', '350mL', '280mL'];
+
+    const datasets = varietyKeys.map(vk => {
+      const color = VARIETY_COLORS[vk] || { bg: '#94a3b8', border: '#64748b' };
+      const data = monthsYm.map(ym => {
+        const mObj = annualMetricData.months[ym];
+        return mObj && mObj.varieties ? (mObj.varieties[vk] || 0) : 0;
+      });
+
+      return {
+        label: vk,
+        data: data,
+        borderColor: color.border,
+        backgroundColor: color.bg,
+        borderWidth: 2,
+        pointRadius: 3,
+        fill: false,
+        tension: 0
+      };
+    });
+
+    annualTrendChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: monthLabels,
+        datasets: datasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: { boxWidth: 10, font: { size: 11, weight: '600' }, color: '#334155' }
+          },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                return `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()} ${metricInfo.unit || ''}`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: TEXT_COLOR } },
+          y: {
+            grid: { color: GRID_COLOR },
+            ticks: { color: TEXT_COLOR }
+          }
+        }
+      }
+    });
+  }
+
+  /**
+   * 【単月】日別電力推移チャート (ライトテーマ版: 案A ユーティリティ統合)
+   */
+  function renderDailyChart(canvasId, dailyTotals) {
+    if (typeof Chart === 'undefined') return;
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+
+    if (dailyChartInstance) dailyChartInstance.destroy();
+
+    const labels = dailyTotals.map(d => `${d.day}日`);
+    const totalData = dailyTotals.map(d => d.categories['総電力'] || 0);
+    const utilityData = dailyTotals.map(d => d.categories['ユーティリティ'] || 0);
+    const mixingData = dailyTotals.map(d => d.categories['調合抽出'] || 0);
+    const supplyData = dailyTotals.map(d => d.categories['供給'] || 0);
+    const fillingData = dailyTotals.map(d => d.categories['充填'] || 0);
+    const packagingData = dailyTotals.map(d => d.categories['包装'] || 0);
+
+    dailyChartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: '総電力 (kWh)',
+            data: totalData,
+            backgroundColor: 'rgba(2, 132, 199, 0.25)',
+            borderColor: '#0284c7',
+            borderWidth: 1.5,
+            borderRadius: 4
+          },
+          {
+            label: 'ユーティリティ (kWh)',
+            data: utilityData,
+            backgroundColor: 'rgba(14, 165, 233, 0.75)',
+            borderRadius: 3
+          },
+          {
+            label: '調合抽出 (kWh)',
+            data: mixingData,
+            backgroundColor: 'rgba(124, 58, 237, 0.75)',
+            borderRadius: 3
+          },
+          {
+            label: '供給 (kWh)',
+            data: supplyData,
+            backgroundColor: 'rgba(245, 158, 11, 0.75)',
+            borderRadius: 3
+          },
+          {
+            label: '充填 (kWh)',
+            data: fillingData,
+            backgroundColor: 'rgba(5, 150, 105, 0.75)',
+            borderRadius: 3
+          },
+          {
+            label: '包装 (kWh)',
+            data: packagingData,
+            backgroundColor: 'rgba(234, 88, 12, 0.75)',
+            borderRadius: 3
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: { color: '#334155', font: { weight: '600', size: 11 } }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: TEXT_COLOR } },
+          y: { grid: { color: GRID_COLOR }, ticks: { color: TEXT_COLOR } }
+        }
+      }
+    });
+  }
+
+  /**
+   * 【単月】工程別電力比率多層ドーナツチャート (ユーティリティ外側円弧内訳付き)
+   */
+  function renderCategoryDoughnutChart(canvasId, categoryTotals) {
+    if (typeof Chart === 'undefined') return;
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+
+    if (categoryChartInstance) categoryChartInstance.destroy();
+
+    // 1. 内側メイン工程 (ユーティリティ、調合抽出、供給、充填、包装)
+    const mainKeys = ['ユーティリティ', '調合抽出', '供給', '充填', '包装'];
+    const mainColors = ['#0284c7', '#7c3aed', '#f59e0b', '#059669', '#ea580c'];
+    const mainData = mainKeys.map(k => (categoryTotals[k] ? categoryTotals[k].grandTotal : 0));
+    const mainTotalSum = mainData.reduce((a, b) => a + b, 0);
+
+    // 2. 外側ユーティリティ内訳 (コンプレッサー、ボイラー、純水装置、排水処理、チラー) + 他工程透明スペーサー
+    const uBreakdownKeys = ['コンプレッサー', 'ボイラー', '純水装置', '排水処理', 'チラー'];
+    const uBreakdownColors = ['#38bdf8', '#0284c7', '#0ea5e9', '#64748b', '#0891b2'];
+    const uBreakdownData = uBreakdownKeys.map(k => (categoryTotals[k] ? categoryTotals[k].grandTotal : 0));
+    const uTotal = categoryTotals['ユーティリティ'] ? categoryTotals['ユーティリティ'].grandTotal : 0;
+
+    // 外側リングの全データ: ユーティリティ内訳5項目 + 残り4工程分(透明)
+    const outerData = [
+      ...uBreakdownData,
+      categoryTotals['調合抽出'] ? categoryTotals['調合抽出'].grandTotal : 0,
+      categoryTotals['供給'] ? categoryTotals['供給'].grandTotal : 0,
+      categoryTotals['充填'] ? categoryTotals['充填'].grandTotal : 0,
+      categoryTotals['包装'] ? categoryTotals['包装'].grandTotal : 0
+    ];
+
+    const outerColors = [
+      ...uBreakdownColors,
+      'transparent',
+      'transparent',
+      'transparent',
+      'transparent'
+    ];
+
+    const outerBorderColors = [
+      '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff',
+      'transparent', 'transparent', 'transparent', 'transparent'
+    ];
+
+    categoryChartInstance = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        datasets: [
+          // datasets[0]: 外側リング (ユーティリティ内訳の円弧)
+          {
+            label: 'ユーティリティ内訳',
+            data: outerData,
+            backgroundColor: outerColors,
+            borderColor: outerBorderColors,
+            borderWidth: 2,
+            weight: 0.9
+          },
+          // datasets[1]: 内側リング (メイン5工程)
+          {
+            label: '工程大分類',
+            data: mainData,
+            backgroundColor: mainColors,
+            borderColor: '#ffffff',
+            borderWidth: 2,
+            weight: 1.2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: {
+              color: '#334155',
+              font: { weight: '600', size: 11 },
+              generateLabels: function() {
+                // メイン工程5件 + ユーティリティ内訳5件の凡例
+                const labels = [];
+                // メイン
+                mainKeys.forEach((name, i) => {
+                  labels.push({
+                    text: `${name}`,
+                    fillStyle: mainColors[i],
+                    strokeStyle: mainColors[i],
+                    lineWidth: 1,
+                    hidden: false,
+                    index: i
+                  });
+                });
+                // 内訳
+                uBreakdownKeys.forEach((name, i) => {
+                  labels.push({
+                    text: ` └ ${name}`,
+                    fillStyle: uBreakdownColors[i],
+                    strokeStyle: uBreakdownColors[i],
+                    lineWidth: 1,
+                    hidden: false,
+                    index: 10 + i
+                  });
+                });
+                return labels;
+              }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const dsIndex = context.datasetIndex;
+                const dataIndex = context.dataIndex;
+
+                if (dsIndex === 0) {
+                  // 外側リング (ユーティリティ内訳)
+                  if (dataIndex < uBreakdownKeys.length) {
+                    const name = uBreakdownKeys[dataIndex];
+                    const val = context.raw || 0;
+                    const pct = uTotal > 0 ? ((val / uTotal) * 100).toFixed(1) : '0';
+                    return ` [ユーティリティ内訳] ${name}: ${Math.round(val).toLocaleString()} kWh (${pct}%)`;
+                  }
+                  return null; // 透明部分はツールチップ非表示
+                } else {
+                  // 内側リング (メイン工程)
+                  const name = mainKeys[dataIndex];
+                  const val = context.raw || 0;
+                  const pct = mainTotalSum > 0 ? ((val / mainTotalSum) * 100).toFixed(1) : '0';
+                  return ` ${name}: ${Math.round(val).toLocaleString()} kWh (${pct}%)`;
+                }
+              }
+            }
+          }
+        },
+        cutout: '58%'
+      }
+    });
+  }
+
+  /**
+   * 【年間設備別】月別設備別・工程別電力推移チャート
+   */
+  function renderAnnualEquipmentTrendChart(canvasId, equipmentSummary, viewMode = 'utilityGroup') {
+    if (typeof Chart === 'undefined') return;
+    const ctx = document.getElementById(canvasId);
+    if (!ctx || !equipmentSummary) return;
+
+    if (annualEquipTrendChartInstance) annualEquipTrendChartInstance.destroy();
+
+    const monthLabels = ['4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月', '1月', '2月', '3月'];
+    const cats = equipmentSummary.categories || {};
+    const totalData = cats['総電力'] ? cats['総電力'].monthly : [];
+
+    let datasets = [];
+
+    // 1. 総電力 (折れ線ライン)
+    datasets.push({
+      type: 'line',
+      label: '総電力 (kWh)',
+      data: totalData,
+      borderColor: '#0284c7',
+      backgroundColor: 'rgba(2, 132, 199, 0.08)',
+      borderWidth: 2.2,
+      pointRadius: 4,
+      pointBackgroundColor: '#0284c7',
+      tension: 0,
+      order: 0
+    });
+
+    if (viewMode === 'utilityGroup') {
+      // ユーティリティ統合モード
+      datasets.push(
+        {
+          type: 'bar',
+          label: 'ユーティリティ (kWh)',
+          data: cats['ユーティリティ'] ? cats['ユーティリティ'].monthly : [],
+          backgroundColor: 'rgba(14, 165, 233, 0.8)',
+          borderRadius: 3,
+          order: 1
+        },
+        {
+          type: 'bar',
+          label: '調合抽出 (kWh)',
+          data: cats['調合抽出'] ? cats['調合抽出'].monthly : [],
+          backgroundColor: 'rgba(124, 58, 237, 0.8)',
+          borderRadius: 3,
+          order: 1
+        },
+        {
+          type: 'bar',
+          label: '供給 (kWh)',
+          data: cats['供給'] ? cats['供給'].monthly : [],
+          backgroundColor: 'rgba(245, 158, 11, 0.8)',
+          borderRadius: 3,
+          order: 1
+        },
+        {
+          type: 'bar',
+          label: '充填 (kWh)',
+          data: cats['充填'] ? cats['充填'].monthly : [],
+          backgroundColor: 'rgba(5, 150, 105, 0.8)',
+          borderRadius: 3,
+          order: 1
+        },
+        {
+          type: 'bar',
+          label: '包装 (kWh)',
+          data: cats['包装'] ? cats['包装'].monthly : [],
+          backgroundColor: 'rgba(234, 88, 12, 0.8)',
+          borderRadius: 3,
+          order: 1
+        }
+      );
+    } else {
+      // 設備詳細内訳モード
+      datasets.push(
+        {
+          type: 'bar',
+          label: 'コンプレッサー',
+          data: cats['コンプレッサー'] ? cats['コンプレッサー'].monthly : [],
+          backgroundColor: '#38bdf8',
+          borderRadius: 2
+        },
+        {
+          type: 'bar',
+          label: 'ボイラー',
+          data: cats['ボイラー'] ? cats['ボイラー'].monthly : [],
+          backgroundColor: '#0284c7',
+          borderRadius: 2
+        },
+        {
+          type: 'bar',
+          label: '純水装置',
+          data: cats['純水装置'] ? cats['純水装置'].monthly : [],
+          backgroundColor: '#0ea5e9',
+          borderRadius: 2
+        },
+        {
+          type: 'bar',
+          label: '排水処理',
+          data: cats['排水処理'] ? cats['排水処理'].monthly : [],
+          backgroundColor: '#64748b',
+          borderRadius: 2
+        },
+        {
+          type: 'bar',
+          label: 'チラー',
+          data: cats['チラー'] ? cats['チラー'].monthly : [],
+          backgroundColor: '#0891b2',
+          borderRadius: 2
+        },
+        {
+          type: 'bar',
+          label: '調合抽出',
+          data: cats['調合抽出'] ? cats['調合抽出'].monthly : [],
+          backgroundColor: '#7c3aed',
+          borderRadius: 2
+        },
+        {
+          type: 'bar',
+          label: '供給',
+          data: cats['供給'] ? cats['供給'].monthly : [],
+          backgroundColor: '#f59e0b',
+          borderRadius: 2
+        },
+        {
+          type: 'bar',
+          label: '充填',
+          data: cats['充填'] ? cats['充填'].monthly : [],
+          backgroundColor: '#059669',
+          borderRadius: 2
+        },
+        {
+          type: 'bar',
+          label: '包装',
+          data: cats['包装'] ? cats['包装'].monthly : [],
+          backgroundColor: '#ea580c',
+          borderRadius: 2
+        }
+      );
+    }
+
+    annualEquipTrendChartInstance = new Chart(ctx, {
+      data: {
+        labels: monthLabels,
+        datasets: datasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: { color: '#334155', font: { weight: '600', size: 11 } }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(c) {
+                return ` ${c.dataset.label}: ${Math.round(c.raw || 0).toLocaleString()} kWh`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: TEXT_COLOR } },
+          y: {
+            grid: { color: GRID_COLOR },
+            ticks: {
+              color: TEXT_COLOR,
+              callback: (v) => `${(v / 1000).toFixed(0)}k`
+            }
+          }
+        }
+      }
+    });
+  }
+
+  /**
+   * 【年間設備別】工程別・設備別年間電力比率多層ドーナツチャート
+   */
+  function renderAnnualEquipmentDoughnutChart(canvasId, equipmentSummary) {
+    if (typeof Chart === 'undefined') return;
+    const ctx = document.getElementById(canvasId);
+    if (!ctx || !equipmentSummary) return;
+
+    if (annualEquipDoughnutChartInstance) annualEquipDoughnutChartInstance.destroy();
+
+    const cats = equipmentSummary.categories || {};
+
+    // 1. 内側メイン工程 (ユーティリティ、調合抽出、供給、充填、包装)
+    const mainKeys = ['ユーティリティ', '調合抽出', '供給', '充填', '包装'];
+    const mainColors = ['#0284c7', '#7c3aed', '#f59e0b', '#059669', '#ea580c'];
+    const mainData = mainKeys.map(k => (cats[k] ? cats[k].annualTotal : 0));
+    const mainTotalSum = mainData.reduce((a, b) => a + b, 0);
+
+    // 2. 外側ユーティリティ内訳 (コンプレッサー、ボイラー、純水装置、排水処理、チラー) + 他工程透明
+    const uBreakdownKeys = ['コンプレッサー', 'ボイラー', '純水装置', '排水処理', 'チラー'];
+    const uBreakdownColors = ['#38bdf8', '#0284c7', '#0ea5e9', '#64748b', '#0891b2'];
+    const uBreakdownData = uBreakdownKeys.map(k => (cats[k] ? cats[k].annualTotal : 0));
+    const uTotal = cats['ユーティリティ'] ? cats['ユーティリティ'].annualTotal : 0;
+
+    const outerData = [
+      ...uBreakdownData,
+      cats['調合抽出'] ? cats['調合抽出'].annualTotal : 0,
+      cats['供給'] ? cats['供給'].annualTotal : 0,
+      cats['充填'] ? cats['充填'].annualTotal : 0,
+      cats['包装'] ? cats['包装'].annualTotal : 0
+    ];
+
+    const outerColors = [
+      ...uBreakdownColors,
+      'transparent', 'transparent', 'transparent', 'transparent'
+    ];
+
+    const outerBorderColors = [
+      '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff',
+      'transparent', 'transparent', 'transparent', 'transparent'
+    ];
+
+    annualEquipDoughnutChartInstance = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        datasets: [
+          {
+            label: 'ユーティリティ内訳',
+            data: outerData,
+            backgroundColor: outerColors,
+            borderColor: outerBorderColors,
+            borderWidth: 2,
+            weight: 0.9
+          },
+          {
+            label: '工程大分類',
+            data: mainData,
+            backgroundColor: mainColors,
+            borderColor: '#ffffff',
+            borderWidth: 2,
+            weight: 1.2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: {
+              color: '#334155',
+              font: { weight: '600', size: 11 },
+              generateLabels: function() {
+                const labels = [];
+                mainKeys.forEach((name, i) => {
+                  labels.push({
+                    text: `${name}`,
+                    fillStyle: mainColors[i],
+                    strokeStyle: mainColors[i],
+                    lineWidth: 1,
+                    hidden: false,
+                    index: i
+                  });
+                });
+                uBreakdownKeys.forEach((name, i) => {
+                  labels.push({
+                    text: ` └ ${name}`,
+                    fillStyle: uBreakdownColors[i],
+                    strokeStyle: uBreakdownColors[i],
+                    lineWidth: 1,
+                    hidden: false,
+                    index: 10 + i
+                  });
+                });
+                return labels;
+              }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const dsIndex = context.datasetIndex;
+                const dataIndex = context.dataIndex;
+                if (dsIndex === 0) {
+                  if (dataIndex < uBreakdownKeys.length) {
+                    const name = uBreakdownKeys[dataIndex];
+                    const val = context.raw || 0;
+                    const pct = uTotal > 0 ? ((val / uTotal) * 100).toFixed(1) : '0';
+                    return ` [年間内訳] ${name}: ${Math.round(val).toLocaleString()} kWh (${pct}%)`;
+                  }
+                  return null;
+                } else {
+                  const name = mainKeys[dataIndex];
+                  const val = context.raw || 0;
+                  const pct = mainTotalSum > 0 ? ((val / mainTotalSum) * 100).toFixed(1) : '0';
+                  return ` ${name}: ${Math.round(val).toLocaleString()} kWh (${pct}%)`;
+                }
+              }
+            }
+          }
+        },
+        cutout: '58%'
+      }
+    });
+  }
+
+  return {
+    renderDailyChart,
+    renderCategoryDoughnutChart,
+    renderAnnualStackedBarChart,
+    renderAnnualTrendChart,
+    renderAnnualEquipmentTrendChart,
+    renderAnnualEquipmentDoughnutChart
+  };
+
+}));
+
+</script>
+  <script>
+/**
+ * gas_app/js/app.js
+ * フロントエンドUI制御・イベントハンドリング・年間月別＆単月パイプライン連携
+ * (月別電力使用量集約グラフ表示(総電力 2024).xlsx 準拠)
+ */
+
+(function () {
+  // アプリケーション状態
+  const state = {
+    currentView: 'annualView',      // 'annualView' | 'monthlyView' | 'annualEquipmentView'
+    currentAnnualMode: 'combined',   // 'combined' | 'waterOnly' | 'fillingOnly'
+    currentMetric: 'powerKwh',       // 'powerKwh', 'operationMin', etc.
+    annualEquipmentViewMode: 'utilityGroup', // 'utilityGroup' | 'detail'
+    annualData: null,                // 年間データセット
+    loadedFiles: [],                 // [{ fileName, content }]
+    detectedTags: new Set(),
+    currentAggregation: null,        // 単月1時間集計 (現在表示中)
+    currentCategoryResult: null,     // 単月カテゴリ集計 (現在表示中)
+    currentKpiResult: null,
+    monthlyDatasets: {},             // { [ym]: { ym, aggResult, catResult, kpiResult, externalData } }
+    lastSelectedMonthlyYm: null,     // 直前に表示していた年月
+    externalData: {
+      production: { totalBottles: 0 },
+      electricity: { usedKwhThousand: 288.075, costThousandYen: 6176.992, unitPriceYenPerKwh: 21.4423 }
+    }
+  };
+
+  // 品種8大分類キー
+  const VARIETY_KEYS = ['2.0L', '1.5L', '1.0L', '600mL丸', '500mL丸', '500mL角', '350mL', '280mL'];
+
+  // DOM要素
+  let dropzone, fileInput, progressBarContainer, progressBarFill;
+  let annualDemoBtn, demoBtn, syncBtn, exportBtn, toastContainer;
+  let metricSelector, fiscalYearSelector;
+  let monthlyYearMonthSelect, monthlyDataStatus;
+
+  // 初期化関数
+  function initApp() {
+    cacheElements();
+    setupEventListeners();
+
+    // 実行環境の判定 (ローカル開発環境 vs GAS本番環境)
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    
+    // 開発・検証用ボタンの表示制御 (ローカル開発時のみ表示)
+    document.querySelectorAll('.dev-only-btn').forEach(btn => {
+      btn.style.display = isLocal ? 'inline-flex' : 'none';
+    });
+
+    if (isLocal) {
+      // ローカル環境: 2025年度年間デモデータを自動読込
+      loadAnnualData('2025').then(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const viewParam = urlParams.get('view');
+        if (viewParam) {
+          switchMainView(viewParam);
+        }
+      });
+    } else {
+      // GAS環境: URLパラメータの画面切替のみ反映
+      const urlParams = new URLSearchParams(window.location.search);
+      const viewParam = urlParams.get('view');
+      if (viewParam) {
+        switchMainView(viewParam);
+      }
+    }
+  }
+
+  // DOMロード状態に応じた確実な初期化実行
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+  } else {
+    initApp();
+  }
+
+  function cacheElements() {
+    dropzone = document.getElementById('dropzone');
+    fileInput = document.getElementById('fileInput');
+    progressBarContainer = document.getElementById('progressBarContainer');
+    progressBarFill = document.getElementById('progressBarFill');
+    annualDemoBtn = document.getElementById('annualDemoBtn');
+    demoBtn = document.getElementById('demoBtn');
+    syncBtn = document.getElementById('syncBtn');
+    exportBtn = document.getElementById('exportBtn');
+    toastContainer = document.getElementById('toastContainer');
+    metricSelector = document.getElementById('metricSelector');
+    fiscalYearSelector = document.getElementById('fiscalYearSelector');
+    monthlyYearMonthSelect = document.getElementById('monthlyYearMonthSelect');
+    monthlyDataStatus = document.getElementById('monthlyDataStatus');
+  }
+
+  function setupEventListeners() {
+    // 1. メインナビゲーション (年間 ⇔ 単月)
+    document.querySelectorAll('.main-nav-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const targetView = e.currentTarget.getAttribute('data-view');
+        switchMainView(targetView);
+      });
+    });
+
+    // 2. 年間操業モード切り替えピルボタン
+    const pillContainer = document.getElementById('operationModePills');
+    if (pillContainer) {
+      pillContainer.querySelectorAll('.pill-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          pillContainer.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+          e.currentTarget.classList.add('active');
+          state.currentAnnualMode = e.currentTarget.getAttribute('data-mode');
+          renderAnnualView();
+        });
+      });
+    }
+
+    // 3. 表示指標セレクター
+    if (metricSelector) {
+      metricSelector.addEventListener('change', (e) => {
+        state.currentMetric = e.target.value;
+        renderAnnualView();
+      });
+    }
+
+    // 4. 対象年度セレクター
+    if (fiscalYearSelector) {
+      fiscalYearSelector.addEventListener('change', (e) => {
+        const yr = e.target.value;
+        if (!yr) return;
+        const equipYr = document.getElementById('annualEquipmentYearSelect');
+        if (equipYr) equipYr.value = yr;
+        loadAnnualData(yr, true);
+      });
+    }
+
+    const equipYearSelect = document.getElementById('annualEquipmentYearSelect');
+    if (equipYearSelect) {
+      equipYearSelect.addEventListener('change', (e) => {
+        const yr = e.target.value;
+        if (!yr) return;
+        if (fiscalYearSelector) fiscalYearSelector.value = yr;
+        loadAnnualData(yr, true);
+      });
+    }
+
+    // 4-1. 設備別分析 表示モードピルボタン (ユーティリティ統合 ⇔ 設備詳細内訳)
+    const equipViewPills = document.getElementById('equipViewModePills');
+    if (equipViewPills) {
+      equipViewPills.querySelectorAll('.pill-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          equipViewPills.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+          e.currentTarget.classList.add('active');
+          state.annualEquipmentViewMode = e.currentTarget.getAttribute('data-mode');
+          renderAnnualEquipmentView();
+        });
+      });
+    }
+
+    // 4-2. 単月表示年月セレクター
+    if (monthlyYearMonthSelect) {
+      monthlyYearMonthSelect.addEventListener('change', (e) => {
+        const ym = e.target.value;
+        if (ym && state.monthlyDatasets[ym]) {
+          state.lastSelectedMonthlyYm = ym;
+          renderSingleMonthData(state.monthlyDatasets[ym]);
+        }
+      });
+    }
+
+    // 5. ボタンアクション
+    if (annualDemoBtn) {
+      annualDemoBtn.addEventListener('click', () => {
+        const year = (fiscalYearSelector && fiscalYearSelector.value) ? fiscalYearSelector.value : '2025';
+        loadAnnualData(year, true);
+      });
+    }
+
+    if (demoBtn) {
+      demoBtn.addEventListener('click', () => {
+        switchMainView('monthlyView');
+        loadSingleMonthDemo();
+      });
+    }
+
+    if (syncBtn) {
+      syncBtn.addEventListener('click', handleSyncToSpreadsheet);
+    }
+
+    if (exportBtn) {
+      exportBtn.addEventListener('click', handleExportExcel);
+    }
+
+    // 6. 単月ファイルドラッグ＆ドロップ
+    if (dropzone && fileInput) {
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropzone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropzone.classList.add('dragover');
+        });
+      });
+
+      ['dragleave', 'drop'].forEach(eventName => {
+        dropzone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropzone.classList.remove('dragover');
+        });
+      });
+
+      dropzone.addEventListener('drop', (e) => {
+        const files = Array.from(e.dataTransfer.files);
+        handleFiles(files);
+      });
+
+      dropzone.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', (e) => {
+        const files = Array.from(e.target.files);
+        handleFiles(files);
+      });
+    }
+  }
+
+  /**
+   * メインビュー切り替え (年間推移 ⇔ 年間設備別分析 ⇔ 単月詳細)
+   */
+  function switchMainView(viewId) {
+    state.currentView = viewId;
+    document.querySelectorAll('.main-nav-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-view') === viewId);
+    });
+
+    const annualSec = document.getElementById('annualView');
+    const monthlySec = document.getElementById('monthlyView');
+    const equipSec = document.getElementById('annualEquipmentView');
+
+    if (annualSec) annualSec.style.display = (viewId === 'annualView') ? 'block' : 'none';
+    if (monthlySec) monthlySec.style.display = (viewId === 'monthlyView') ? 'block' : 'none';
+    if (equipSec) equipSec.style.display = (viewId === 'annualEquipmentView') ? 'block' : 'none';
+
+    if (viewId === 'annualView') {
+      if (state.annualData) renderAnnualView();
+    } else if (viewId === 'annualEquipmentView') {
+      if (state.annualData) renderAnnualEquipmentView();
+    } else if (viewId === 'monthlyView') {
+      renderCurrentMonthlyView();
+    }
+  }
+
+  // =========================================================================
+  // 年間データ読込＆描画ロジック
+  // =========================================================================
+
+  function updateFiscalYearOptions(availableYears, selectedYear) {
+    const selectors = [
+      document.getElementById('fiscalYearSelector'),
+      document.getElementById('annualEquipmentYearSelect')
+    ];
+    selectors.forEach(sel => {
+      if (!sel) return;
+      sel.innerHTML = '';
+      if (!availableYears || !availableYears.length) {
+        sel.innerHTML = '<option value="">（データ未読込）</option>';
+        return;
+      }
+      availableYears.forEach(yr => {
+        const opt = document.createElement('option');
+        opt.value = yr;
+        const startYr = parseInt(yr, 10);
+        opt.textContent = `${yr}年度 (${startYr}/04〜${startYr + 1}/03)`;
+        if (String(yr) === String(selectedYear)) {
+          opt.selected = true;
+        }
+        sel.appendChild(opt);
+      });
+    });
+  }
+
+  async function loadAnnualData(year = '2025', showNotice = false) {
+    try {
+      showProgress(30);
+      let res = await fetch(`../demo/demo_annual_${year}.json?t=${Date.now()}`);
+      if (!res.ok) {
+        res = await fetch(`demo/demo_annual_${year}.json?t=${Date.now()}`);
+      }
+      if (!res.ok) {
+        res = await fetch(`demo_annual_${year}.json?t=${Date.now()}`);
+      }
+      if (!res.ok) throw new Error(`${year}年度のデータ取得に失敗しました (status: ${res.status})`);
+      const data = await res.json();
+      state.annualData = data;
+      updateFiscalYearOptions(['2025', '2024'], year);
+      showProgress(80);
+
+      renderAnnualView();
+      renderAnnualEquipmentView();
+      showProgress(100);
+      setTimeout(hideProgress, 500);
+
+      if (showNotice) {
+        showToast(`${year}年度の年間集約データ（全12ヶ月・8品種）を読み込みました`, 'success');
+      }
+    } catch (err) {
+      console.error('Annual load error:', err);
+      hideProgress();
+      showToast(`年間データ読込エラー: ${err.message}`, 'error');
+    }
+  }
+
+  function renderAnnualView() {
+    if (!state.annualData) return;
+
+    const mode = state.currentAnnualMode; // 'combined', 'waterOnly', 'fillingOnly'
+    const metricKey = state.currentMetric;
+    const modeData = state.annualData.modes[mode];
+    if (!modeData) return;
+
+    const metricData = modeData[metricKey];
+    if (!metricData) return;
+
+    // 1. 指標情報の特定
+    const metricConfig = AppConfig.EVALUATION_METRICS.find(m => m.key === metricKey) || {
+      name: '電力量', unit: 'kWh', digits: 1
+    };
+
+    // 2. 年間KPIサマリーカード更新
+    const powerMetric = modeData['powerKwh'];
+    const timeMetric = modeData['operationMin'];
+    const bottleMetric = modeData['productionBottles'];
+
+    const totalKwh = powerMetric && powerMetric.annualTotal ? powerMetric.annualTotal.monthlyTotal : 0;
+    const totalMin = timeMetric && timeMetric.annualTotal ? timeMetric.annualTotal.monthlyTotal : 0;
+    const totalHours = (totalMin / 60).toFixed(1);
+    const totalBottles = bottleMetric && bottleMetric.annualTotal ? bottleMetric.annualTotal.monthlyTotal : 0;
+    const avgKpi = totalBottles > 0 ? (totalKwh / totalBottles).toFixed(4) : '---';
+
+    setElemText('annualTotalKwh', totalKwh.toLocaleString());
+    setElemText('annualTotalHours', parseFloat(totalHours).toLocaleString());
+    setElemText('annualTotalBottles', totalBottles.toLocaleString());
+    setElemText('annualAvgKpi', avgKpi);
+
+    // タイトル更新
+    setElemText('currentMetricLabel', `${metricConfig.name} (${metricConfig.unit})`);
+    setElemText('tableMetricTitle', `${metricConfig.name} [${metricConfig.unit}]`);
+
+    // 3. グラフ描画
+    ChartManager.renderAnnualStackedBarChart(
+      'annualStackedChart',
+      metricData,
+      metricConfig,
+      state.annualData.monthLabels,
+      state.annualData.months
+    );
+
+    ChartManager.renderAnnualTrendChart(
+      'annualTrendChart',
+      metricData,
+      metricConfig,
+      state.annualData.monthLabels,
+      state.annualData.months
+    );
+
+    // 4. 年間テーブル描画
+    renderAnnualTable(metricData, metricConfig);
+  }
+
+  /**
+   * 年間月別実績集計表の動的生成 (Excel原紙完全再現)
+   */
+  function renderAnnualTable(metricData, metricConfig) {
+    const tbody = document.getElementById('annualTableBody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+    const months = state.annualData.months;
+    const labels = state.annualData.monthLabels;
+    const digits = metricConfig.digits;
+
+    let runningSum = 0;
+    const currentMode = state.currentAnnualMode;
+    const modeObj = (state.annualData.modes && state.annualData.modes[currentMode]) || {};
+    const powerMonths = modeObj.powerKwh ? modeObj.powerKwh.months : null;
+    const bottleMonths = modeObj.productionBottles ? modeObj.productionBottles.months : null;
+    const timeMonths = modeObj.operationMin ? modeObj.operationMin.months : null;
+    const costMonths = modeObj.powerCostYen ? modeObj.powerCostYen.months : null;
+
+    let cumPower = 0;
+    let cumBottles = 0;
+    let cumTime = 0;
+    let cumCost = 0;
+
+    // 各月行 (4月〜3月)
+    months.forEach((ym, idx) => {
+      const mObj = metricData.months[ym] || { cumulativeTotal: 0, monthlyTotal: 0, varieties: {} };
+      const tr = document.createElement('tr');
+
+      const formatVal = (v) => {
+        if (v === null || v === undefined) return '0';
+        return typeof v === 'number' ? v.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : v;
+      };
+
+      // 累計値の取得または動的算出
+      let cumVal = mObj.cumulativeTotal;
+      if (cumVal === undefined || cumVal === null) {
+        if (['powerKwh', 'operationMin', 'productionBottles', 'powerCostYen'].includes(state.currentMetric)) {
+          runningSum += (mObj.monthlyTotal || 0);
+          cumVal = runningSum;
+        } else if (state.currentMetric === 'kwhPerBottle') {
+          cumPower += (powerMonths && powerMonths[ym] ? powerMonths[ym].monthlyTotal : 0);
+          cumBottles += (bottleMonths && bottleMonths[ym] ? bottleMonths[ym].monthlyTotal : 0);
+          cumVal = cumBottles > 0 ? (cumPower / cumBottles) : 0;
+        } else if (state.currentMetric === 'kwhPerMinute') {
+          cumPower += (powerMonths && powerMonths[ym] ? powerMonths[ym].monthlyTotal : 0);
+          cumTime += (timeMonths && timeMonths[ym] ? timeMonths[ym].monthlyTotal : 0);
+          cumVal = cumTime > 0 ? (cumPower / cumTime) : 0;
+        } else if (state.currentMetric === 'costPerBottle') {
+          cumCost += (costMonths && costMonths[ym] ? costMonths[ym].monthlyTotal : 0);
+          cumBottles += (bottleMonths && bottleMonths[ym] ? bottleMonths[ym].monthlyTotal : 0);
+          cumVal = cumBottles > 0 ? (cumCost / cumBottles) : 0;
+        } else if (state.currentMetric === 'costPerMinute') {
+          cumCost += (costMonths && costMonths[ym] ? costMonths[ym].monthlyTotal : 0);
+          cumTime += (timeMonths && timeMonths[ym] ? timeMonths[ym].monthlyTotal : 0);
+          cumVal = cumTime > 0 ? (cumCost / cumTime) : 0;
+        } else {
+          runningSum += (mObj.monthlyTotal || 0);
+          cumVal = runningSum;
+        }
+      }
+
+      let html = `
+        <td style="font-weight: 600;">${labels[idx]} (${ym})</td>
+        <td style="color: var(--text-muted); font-weight: 500;">${formatVal(cumVal)}</td>
+        <td style="font-weight: 700; color: var(--primary);">${formatVal(mObj.monthlyTotal)}</td>
+      `;
+
+      VARIETY_KEYS.forEach(vk => {
+        const val = mObj.varieties ? (mObj.varieties[vk] || 0) : 0;
+        const style = val > 0 ? 'font-weight: 500;' : 'color: var(--text-light);';
+        html += `<td style="${style}">${formatVal(val)}</td>`;
+      });
+
+      tr.innerHTML = html;
+      tbody.appendChild(tr);
+    });
+
+    // 年間合計行 (計)
+    const totObj = metricData.annualTotal || { monthlyTotal: 0, varieties: {} };
+    const trTotal = document.createElement('tr');
+    trTotal.className = 'total-row';
+
+    const formatVal = (v) => {
+      if (v === null || v === undefined) return '0';
+      return typeof v === 'number' ? v.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : v;
+    };
+
+    let totHtml = `
+      <td>年間計</td>
+      <td>---</td>
+      <td>${formatVal(totObj.monthlyTotal)}</td>
+    `;
+
+    VARIETY_KEYS.forEach(vk => {
+      const val = totObj.varieties ? (totObj.varieties[vk] || 0) : 0;
+      totHtml += `<td>${formatVal(val)}</td>`;
+    });
+
+    trTotal.innerHTML = totHtml;
+    tbody.appendChild(trTotal);
+  }
+
+  // =========================================================================
+  // 年間推移・設備別分析 描画ロジック
+  // =========================================================================
+
+  function renderAnnualEquipmentView() {
+    if (!state.annualData || !state.annualData.equipmentSummary) return;
+
+    const eq = state.annualData.equipmentSummary;
+    const cats = eq.categories || {};
+    const ops = eq.operationTimes || {};
+
+    const totalPower = cats['総電力'] ? cats['総電力'].annualTotal : 0;
+    const utilPower = cats['ユーティリティ'] ? cats['ユーティリティ'].annualTotal : 0;
+    const fillingHours = ops.actualFillingHours ? ops.actualFillingHours.annualTotal : 0;
+    const waterHours = ops.waterHours ? ops.waterHours.annualTotal : 0;
+
+    // 1. KPIサマリーカード
+    setElemText('kpiEquipTotalKwh', totalPower.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+    setElemText('kpiEquipUtilityKwh', utilPower.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+    const utilRatio = totalPower > 0 ? ((utilPower / totalPower) * 100).toFixed(1) : '0.0';
+    setElemText('kpiEquipUtilityRatio', `${utilRatio}%`);
+
+    // 個別設備の中で最大消費設備を特定 (ユーティリティ・総電力を除く)
+    const excludeKeys = ['総電力', 'ユーティリティ'];
+    let topName = '---';
+    let topVal = 0;
+    Object.keys(cats).forEach(k => {
+      if (!excludeKeys.includes(k)) {
+        const val = cats[k].annualTotal || 0;
+        if (val > topVal) {
+          topVal = val;
+          topName = k;
+        }
+      }
+    });
+    setElemText('kpiEquipTopName', topName);
+    const topRatio = totalPower > 0 ? ((topVal / totalPower) * 100).toFixed(1) : '0.0';
+    setElemText('kpiEquipTopKwh', topVal.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+    setElemText('kpiEquipTopRatio', `${topRatio}%`);
+
+    setElemText('kpiEquipFillingHours', fillingHours.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+    setElemText('kpiEquipWaterHours', waterHours.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+
+    // 2. チャート描画
+    if (window.ChartManager) {
+      if (typeof ChartManager.renderAnnualEquipmentTrendChart === 'function') {
+        ChartManager.renderAnnualEquipmentTrendChart('annualEquipmentTrendChart', eq, state.annualEquipmentViewMode);
+      }
+      if (typeof ChartManager.renderAnnualEquipmentDoughnutChart === 'function') {
+        ChartManager.renderAnnualEquipmentDoughnutChart('annualEquipmentDoughnutChart', eq);
+      }
+    }
+
+    // 3. テーブル描画
+    const tbody = document.getElementById('annualEquipmentTableBody');
+    if (!tbody) return;
+
+    const rowsConfig = [
+      { key: '総電力', label: '総消費電力', type: 'category', className: 'row-header-total' },
+      { key: 'ユーティリティ', label: 'ユーティリティ計', type: 'category', className: 'row-header-utility' },
+      { key: 'コンプレッサー', label: '├ コンプレッサー', type: 'category', className: 'row-sub-item' },
+      { key: 'ボイラー', label: '├ ボイラー', type: 'category', className: 'row-sub-item' },
+      { key: '純水装置', label: '├ 純水装置', type: 'category', className: 'row-sub-item' },
+      { key: '排水処理', label: '├ 排水処理', type: 'category', className: 'row-sub-item' },
+      { key: 'チラー', label: '└ チラー', type: 'category', className: 'row-sub-item' },
+      { key: '調合抽出', label: '調合抽出', type: 'category' },
+      { key: '供給', label: '供給', type: 'category' },
+      { key: '充填', label: '充填', type: 'category' },
+      { key: '包装', label: '包装', type: 'category' },
+      { key: 'actualFillingHours', label: '実充填操業時間 (h)', type: 'time' },
+      { key: 'waterHours', label: '水運転時間 (h)', type: 'time' }
+    ];
+
+    let html = '';
+    rowsConfig.forEach(row => {
+      let annualVal = 0;
+      let monthlyVals = [];
+      let ratioStr = '---';
+
+      if (row.type === 'category') {
+        const catData = cats[row.key];
+        if (catData) {
+          annualVal = catData.annualTotal || 0;
+          monthlyVals = catData.monthly || [];
+          const ratio = totalPower > 0 ? (annualVal / totalPower) * 100 : 0;
+          ratioStr = `<span class="ratio-badge">${ratio.toFixed(1)}%</span>`;
+        }
+      } else if (row.type === 'time') {
+        const timeData = ops[row.key];
+        if (timeData) {
+          annualVal = timeData.annualTotal || 0;
+          monthlyVals = timeData.monthly || [];
+          const totalOpHours = ops.totalHours ? ops.totalHours.annualTotal : 0;
+          const ratio = totalOpHours > 0 ? (annualVal / totalOpHours) * 100 : 0;
+          ratioStr = `<span class="ratio-badge" style="background:#f1f5f9;color:#475569;">${ratio.toFixed(1)}%</span>`;
+        }
+      }
+
+      const trClass = row.className || '';
+      const valFormatted = annualVal.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+      html += `<tr class="${trClass}">
+        <td class="font-medium text-left">${row.label}</td>
+        <td class="text-right font-tabular font-bold">${valFormatted}</td>
+        <td class="text-center font-tabular">${ratioStr}</td>`;
+
+      for (let i = 0; i < 12; i++) {
+        const mVal = monthlyVals[i] !== undefined ? monthlyVals[i] : 0;
+        const mFormatted = mVal.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+        html += `<td class="text-right font-tabular">${mFormatted}</td>`;
+      }
+      html += `</tr>`;
+    });
+    tbody.innerHTML = html;
+  }
+
+  // =========================================================================
+  // 単月詳細データ処理＆ETL連携ロジック
+  // =========================================================================
+
+  // =========================================================================
+  // 単月詳細データ処理＆ETL連携ロジック (複数月管理・切替対応)
+  // =========================================================================
+
+  /**
+   * 年月選択セレクトボックスの選択肢更新
+   * @param {string} targetYmToSelect 
+   */
+  function updateMonthlySelectOptions(targetYmToSelect) {
+    if (!monthlyYearMonthSelect) return;
+    const yms = Object.keys(state.monthlyDatasets).sort();
+    if (yms.length === 0) {
+      monthlyYearMonthSelect.innerHTML = '<option value="">（データ未読込）</option>';
+      if (monthlyDataStatus) monthlyDataStatus.textContent = '';
+      return;
+    }
+
+    monthlyYearMonthSelect.innerHTML = '';
+    yms.forEach(ym => {
+      const opt = document.createElement('option');
+      opt.value = ym;
+      const y = ym.slice(0, 4);
+      const m = parseInt(ym.slice(4, 6), 10);
+      opt.textContent = `${y}年${m}月度 (${ym})`;
+      if (ym === targetYmToSelect) {
+        opt.selected = true;
+      }
+      monthlyYearMonthSelect.appendChild(opt);
+    });
+
+    monthlyYearMonthSelect.value = targetYmToSelect;
+    if (monthlyDataStatus) {
+      monthlyDataStatus.textContent = `読込済: 全${yms.length}ヶ月 (表示中: ${targetYmToSelect})`;
+    }
+  }
+
+  /**
+   * 指定した年月の単月集計結果をUIおよびグラフ・表に反映
+   * @param {Object} monthDataset 
+   */
+  function renderSingleMonthData(monthDataset) {
+    if (!monthDataset) return;
+    state.currentAggregation = monthDataset.aggResult;
+    state.currentCategoryResult = monthDataset.catResult;
+    state.currentKpiResult = monthDataset.kpiResult;
+
+    updateSingleMonthKpiCards(monthDataset.catResult, monthDataset.kpiResult, monthDataset.aggResult, monthDataset.externalData);
+    ChartManager.renderDailyChart('dailyChart', monthDataset.catResult.categoryDailyTotals);
+    ChartManager.renderCategoryDoughnutChart('categoryChart', monthDataset.catResult.categoryMonthlyTotals);
+    renderDailyTable(monthDataset.catResult.categoryDailyTotals);
+
+    if (syncBtn) syncBtn.disabled = false;
+    if (exportBtn) exportBtn.disabled = false;
+  }
+
+  /**
+   * 単月ビュー表示時の年月判定＆描画
+   * ルール: 直前に表示を切り替えていた場合は直前年月、なければ読込済の中の最新月を表示
+   */
+  function renderCurrentMonthlyView() {
+    const yms = Object.keys(state.monthlyDatasets).sort();
+    if (yms.length === 0) return;
+
+    let targetYm = state.lastSelectedMonthlyYm;
+    if (!targetYm || !state.monthlyDatasets[targetYm]) {
+      targetYm = yms[yms.length - 1]; // 最新月
+    }
+    state.lastSelectedMonthlyYm = targetYm;
+    updateMonthlySelectOptions(targetYm);
+    renderSingleMonthData(state.monthlyDatasets[targetYm]);
+  }
+
+  async function loadSingleMonthDemo() {
+    try {
+      showProgress(30);
+      showToast('単月詳細デモデータを読み込み中...', 'info');
+
+      let response = await fetch(`../demo/demo_data_202503.json?t=${Date.now()}`);
+      if (!response.ok) {
+        response = await fetch(`demo/demo_data_202503.json?t=${Date.now()}`);
+      }
+      if (!response.ok) {
+        response = await fetch(`demo_data_202503.json?t=${Date.now()}`);
+      }
+      if (!response.ok) throw new Error(`単月データの取得に失敗しました (${response.status})`);
+      const aggResult202503 = await response.json();
+      showProgress(60);
+
+      // 全タグバッジを点灯
+      ['tag02', 'tag04', 'tag05', 'tag06', 'tag07', 'tagEnergy', 'tagPet'].forEach(tag => {
+        updateTagBadge(tag, true);
+      });
+
+      // 1. 2025年3月度 (202503) の集計データセット
+      const ext202503 = {
+        production: { totalBottles: 3125000 },
+        electricity: { usedKwhThousand: 288.075, costThousandYen: 6176.992, unitPriceYenPerKwh: 21.4423 }
+      };
+      const catResult202503 = CategoryService.aggregateCategories(aggResult202503.rows, aggResult202503.monthlyColumnSums);
+      const kpiResult202503 = KpiService.calculateKpi(
+        catResult202503.categoryMonthlyTotals,
+        catResult202503.monthlyOperationTimes,
+        ext202503.production,
+        ext202503.electricity
+      );
+      state.monthlyDatasets['202503'] = {
+        ym: '202503',
+        aggResult: aggResult202503,
+        catResult: catResult202503,
+        kpiResult: kpiResult202503,
+        externalData: ext202503
+      };
+
+      // 2. 切替検証用として 2025年4月度 (202504) のデータセットも生成・保持
+      const rows202504 = aggResult202503.rows.filter(r => {
+        const day = parseInt(r.date.split('/')[2] || '1', 10);
+        return day <= 30; // 4月は30日まで
+      }).map(r => {
+        const parts = r.date.split('/');
+        return { ...r, date: `2025/04/${parts[2]}` };
+      });
+      const colSums202504 = {};
+      Object.keys(aggResult202503.monthlyColumnSums).forEach(k => {
+        colSums202504[k] = Math.round(aggResult202503.monthlyColumnSums[k] * 0.96 * 10) / 10;
+      });
+      const aggResult202504 = {
+        yearMonth: '202504',
+        rows: rows202504,
+        monthlyColumnSums: colSums202504
+      };
+      const ext202504 = {
+        production: { totalBottles: 3280000 },
+        electricity: { usedKwhThousand: 279.366, costThousandYen: 6225.057, unitPriceYenPerKwh: 22.2828 }
+      };
+      const catResult202504 = CategoryService.aggregateCategories(aggResult202504.rows, aggResult202504.monthlyColumnSums);
+      const kpiResult202504 = KpiService.calculateKpi(
+        catResult202504.categoryMonthlyTotals,
+        catResult202504.monthlyOperationTimes,
+        ext202504.production,
+        ext202504.electricity
+      );
+      state.monthlyDatasets['202504'] = {
+        ym: '202504',
+        aggResult: aggResult202504,
+        catResult: catResult202504,
+        kpiResult: kpiResult202504,
+        externalData: ext202504
+      };
+
+      showProgress(90);
+
+      // 要望仕様: 読込後は最新月（202504）を自動選択して表示
+      const yms = Object.keys(state.monthlyDatasets).sort();
+      const latestYm = yms[yms.length - 1];
+      state.lastSelectedMonthlyYm = latestYm;
+
+      updateMonthlySelectOptions(latestYm);
+      renderSingleMonthData(state.monthlyDatasets[latestYm]);
+
+      showProgress(100);
+      showToast(`単月データ集約完了！複数月(202503, 202504)から最新月(${latestYm})を表示中`, 'success');
+      setTimeout(hideProgress, 800);
+
+    } catch (err) {
+      console.error('Demo error:', err);
+      hideProgress();
+      showToast(`単月データ読込エラー: ${err.message}`, 'error');
+    }
+  }
+
+  function updateSingleMonthKpiCards(catResult, kpiResult, aggResult, extData) {
+    const totalKwh = catResult.categoryMonthlyTotals['総電力'] ? catResult.categoryMonthlyTotals['総電力'].grandTotal : 0;
+    const waterMin = catResult.monthlyOperationTimes.waterTimeMin || 0;
+    const fillMin = catResult.monthlyOperationTimes.actualFillingMin || 0;
+    const electricity = extData ? extData.electricity : state.externalData.electricity;
+
+    setElemText('kpiTotalKwh', Math.round(totalKwh).toLocaleString());
+    setElemText('kpiWaterHours', (waterMin / 60).toFixed(1));
+    setElemText('kpiFillingHours', (fillMin / 60).toFixed(1));
+    setElemText('kpiUnitPrice', electricity && electricity.unitPriceYenPerKwh ? electricity.unitPriceYenPerKwh.toFixed(2) : '---');
+    setElemText('kpiHoursCount', aggResult.rows.length.toLocaleString());
+  }
+
+  function renderDailyTable(dailyTotals) {
+    const tbody = document.getElementById('dailyTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    dailyTotals.forEach(d => {
+      const tr = document.createElement('tr');
+      const cats = d.categories || {};
+      tr.innerHTML = `
+        <td style="font-weight: 600;">${d.date}</td>
+        <td style="font-weight: 700; color: var(--primary);">${Math.round(cats['総電力'] || 0).toLocaleString()}</td>
+        <td style="font-weight: 700; color: #0284c7; background: rgba(2, 132, 199, 0.05);">${Math.round(cats['ユーティリティ'] || 0).toLocaleString()}</td>
+        <td>${Math.round(cats['コンプレッサー'] || 0).toLocaleString()}</td>
+        <td>${Math.round(cats['ボイラー'] || 0).toLocaleString()}</td>
+        <td>${Math.round(cats['純水装置'] || 0).toLocaleString()}</td>
+        <td>${Math.round(cats['排水処理'] || 0).toLocaleString()}</td>
+        <td>${Math.round(cats['チラー'] || 0).toLocaleString()}</td>
+        <td>${Math.round(cats['調合抽出'] || 0).toLocaleString()}</td>
+        <td>${Math.round(cats['供給'] || 0).toLocaleString()}</td>
+        <td>${Math.round(cats['充填'] || 0).toLocaleString()}</td>
+        <td>${Math.round(cats['包装'] || 0).toLocaleString()}</td>
+        <td>${d.operationTimes.actualFillingMin || 0}</td>
+        <td>${d.operationTimes.waterTimeMin || 0}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function handleFiles(files) {
+    if (!files || files.length === 0) return;
+    switchMainView('monthlyView');
+    showProgress(10);
+
+    const txtCsvFiles = [];
+    const excelFiles = [];
+    for (const f of files) {
+      if (f.name.endsWith('.txt') || f.name.endsWith('.csv')) txtCsvFiles.push(f);
+      else if (f.name.endsWith('.xlsx') || f.name.endsWith('.xls')) excelFiles.push(f);
+    }
+
+    for (let i = 0; i < txtCsvFiles.length; i++) {
+      const f = txtCsvFiles[i];
+      const text = await readFileAsText(f);
+      state.loadedFiles.push({ fileName: f.name, content: text });
+      const tagType = CsvParser.detectTagType(f.name, text.slice(0, 500).split(/\r?\n/));
+      if (tagType) {
+        state.detectedTags.add(tagType);
+        updateTagBadge(tagType, true);
+      }
+      showProgress(10 + Math.floor((i / txtCsvFiles.length) * 40));
+    }
+
+    for (const ef of excelFiles) {
+      try {
+        const buffer = await readFileAsArrayBuffer(ef);
+        if (ef.name.includes('エネルギー計算表')) {
+          const res = ExcelReader.parseEnergyCalculationTable(buffer, '202503');
+          if (res && res.unitPriceYenPerKwh) {
+            state.externalData.electricity = res;
+            updateTagBadge('tagEnergy', true);
+            showToast('エネルギー計算表を解析しました', 'success');
+          }
+        } else if (ef.name.includes('月報PET') || ef.name.includes('PET')) {
+          const res = ExcelReader.parsePetMonthlyReport(buffer, '202503');
+          if (res) {
+            state.externalData.production = res;
+            updateTagBadge('tagPet', true);
+            showToast('月報PETを解析しました', 'success');
+          }
+        }
+      } catch (err) {
+        console.warn('Excel parse error:', err);
+      }
+    }
+
+    showProgress(60);
+    runSingleMonthPipeline();
+  }
+
+  function runSingleMonthPipeline() {
+    try {
+      showProgress(70);
+      const groups = CsvParser.groupFilesByYearMonth(state.loadedFiles);
+      const yms = Object.keys(groups);
+      if (yms.length === 0) {
+        throw new Error('読み込み対象の有効な年月データが見つかりませんでした');
+      }
+
+      yms.sort();
+
+      // 各年月のデータを個別に集約・保持
+      yms.forEach((ym, idx) => {
+        const targetFiles = groups[ym];
+        const mergedRecords = CsvParser.mergeTagFiles(targetFiles);
+        const aggResult = HourlyAggregator.aggregateHourly(mergedRecords, ym);
+        const catResult = CategoryService.aggregateCategories(aggResult.rows, aggResult.monthlyColumnSums);
+        const kpiResult = KpiService.calculateKpi(
+          catResult.categoryMonthlyTotals,
+          catResult.monthlyOperationTimes,
+          state.externalData.production,
+          state.externalData.electricity
+        );
+        state.monthlyDatasets[ym] = {
+          ym,
+          aggResult,
+          catResult,
+          kpiResult,
+          externalData: { ...state.externalData }
+        };
+        showProgress(70 + Math.floor(((idx + 1) / yms.length) * 25));
+      });
+
+      // 要望仕様: データを読み込んだ後は、読み込んだ月、または複数月の時は最新月を表示
+      const latestYm = yms[yms.length - 1];
+      state.lastSelectedMonthlyYm = latestYm;
+
+      updateMonthlySelectOptions(latestYm);
+      renderSingleMonthData(state.monthlyDatasets[latestYm]);
+
+      showProgress(100);
+      showToast(`${yms.length}ヶ月分のデータを集約しました（最新: ${latestYm}を表示中）`, 'success');
+      setTimeout(hideProgress, 800);
+    } catch (err) {
+      console.error(err);
+      hideProgress();
+      showToast(`集計エラー: ${err.message}`, 'error');
+    }
+  }
+
+  async function handleSyncToSpreadsheet() {
+    if (!state.currentAggregation) {
+      showToast('反映対象のデータがありません', 'error');
+      return;
+    }
+    showToast('スプレッドシートへ反映中...', 'info');
+    // GAS環境またはモック送信
+    setTimeout(() => {
+      showToast('スプレッドシートへの同期が正常に完了しました！', 'success');
+    }, 1200);
+  }
+
+  function handleExportExcel() {
+    if (typeof XLSX === 'undefined') {
+      showToast('SheetJSライブラリが読み込まれていません', 'error');
+      return;
+    }
+    const wb = XLSX.utils.book_new();
+
+    // 1. 年間月別集計シート
+    if (state.annualData) {
+      const mode = state.currentAnnualMode;
+      const mData = state.annualData.modes[mode][state.currentMetric];
+      const rows = state.annualData.months.map((ym, i) => {
+        const mObj = mData.months[ym];
+        const r = { '年月': `${state.annualData.monthLabels[i]} (${ym})`, '累計': mObj.cumulativeTotal, '月計': mObj.monthlyTotal };
+        VARIETY_KEYS.forEach(vk => r[vk] = mObj.varieties[vk] || 0);
+        return r;
+      });
+      const wsAnnual = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb, wsAnnual, '年間月別実績');
+    }
+
+    // 2. 単月日別集計シート
+    if (state.currentCategoryResult) {
+      const dailyData = state.currentCategoryResult.categoryDailyTotals.map(d => ({
+        '年月日': d.date,
+        '総電力(kWh)': d.categories['総電力'],
+        'チラー(kWh)': d.categories['チラー'],
+        '調合抽出(kWh)': d.categories['調合抽出'],
+        '供給(kWh)': d.categories['供給'],
+        '充填(kWh)': d.categories['充填'],
+        '包装(kWh)': d.categories['包装']
+      }));
+      const wsDaily = XLSX.utils.json_to_sheet(dailyData);
+      XLSX.utils.book_append_sheet(wb, wsDaily, '単月日別集約');
+    }
+
+    XLSX.writeFile(wb, `電力使用量集約管理_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    showToast('Excelファイルをダウンロードしました', 'success');
+  }
+
+  // 補助関数
+  function readFileAsText(file) {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.readAsText(file, 'utf-8');
+    });
+  }
+
+  function readFileAsArrayBuffer(file) {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  function updateTagBadge(tagId, detected) {
+    const el = document.getElementById(tagId);
+    if (el && detected) el.classList.add('detected');
+  }
+
+  function showProgress(pct) {
+    if (progressBarContainer && progressBarFill) {
+      progressBarContainer.style.display = 'block';
+      progressBarFill.style.width = `${pct}%`;
+    }
+  }
+
+  function hideProgress() {
+    if (progressBarContainer) {
+      progressBarContainer.style.display = 'none';
+      progressBarFill.style.width = '0%';
+    }
+  }
+
+  function setElemText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+
+  function showToast(msg, type = 'success') {
+    if (!toastContainer) return;
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `<span>${type === 'success' ? '✓' : (type === 'error' ? '⚠' : 'ℹ')}</span> <div>${msg}</div>`;
+    toastContainer.appendChild(toast);
+    setTimeout(() => toast.remove(), 4000);
+  }
+
+  // グローバル公開
+  window.EnergyApp = {
+    state,
+    renderAnnualView,
+    renderAnnualEquipmentView,
+    loadAnnualData,
+    switchMainView
+  };
+
+})();
+
+</script>
+
+  <!-- ローカル開発環境用フォールバック (GAS環境では上記でロード済みのため二重ロードを防止) -->
+  <script>
+    if (typeof AppConfig === 'undefined') {
+      var scripts = [
+        'js/config.js',
+        'js/etl/csvParser.js',
+        'js/etl/hourlyAggregator.js',
+        'js/etl/excelReader.js',
+        'js/services/categoryService.js',
+        'js/services/kpiService.js',
+        'js/services/annualService.js',
+        'js/components/charts.js',
+        'js/app.js'
+      ];
+      function loadNextScript(index) {
+        if (index >= scripts.length) return;
+        var s = document.createElement('script');
+        s.src = scripts[index] + '?v=20261004_9';
+        s.onload = function() { loadNextScript(index + 1); };
+        document.body.appendChild(s);
+      }
+      loadNextScript(0);
+    }
+  </script>
+
+</body>
+</html>

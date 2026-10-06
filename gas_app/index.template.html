@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>工場エネルギー（電力）使用量集計・分析システム</title>
+
+  <!-- Google Fonts: Outfit, Inter, Noto Sans JP -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <!-- 外部CDNライブラリ (PapaParse, SheetJS, Chart.js) -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <!-- CSSスタイル -->
+  <link rel="stylesheet" href="css/style.css?v=20261004_2">
+  <style>
+    /* GAS環境でのincludeフォールバック */
+    <?!= include('css/style'); ?>
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+
+    <!-- ヘッダー -->
+    <header class="app-header">
+      <div class="header-logo">
+        <div class="logo-icon">⚡</div>
+        <div>
+          <h1>工場エネルギー（電力）使用量集計・分析システム</h1>
+          <p>月別電力使用量集約グラフ・品種別推移 ＆ 原単位KPIダッシュボード</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <!-- 読込・反映状況ステータス表示 -->
+        <div id="syncStatusBadge" class="sync-status-badge" style="display: none;">
+          <span class="badge-dot"></span>
+          <span id="syncStatusText">読込済: 計 0ヶ月</span>
+        </div>
+        <!-- 開発・検証用デモボタン (GAS本番環境では自動非表示) -->
+        <button id="annualDemoBtn" class="btn btn-outline-primary dev-only-btn" style="display: none;">📈 年間デモ再読込</button>
+        <button id="demoBtn" class="btn btn-secondary dev-only-btn" style="display: none;">📅 単月デモ (2025年3月)</button>
+        <button id="scaleSettingBtn" class="btn btn-outline-secondary">⚙️ 目盛り設定</button>
+        <button id="exportBtn" class="btn btn-secondary">Excelエクスポート</button>
+        <button id="syncBtn" class="btn btn-primary" disabled>スプレッドシートへ反映</button>
+      </div>
+    </header>
+
+    <!-- メインナビゲーションタブ -->
+    <nav class="main-nav">
+      <button class="main-nav-btn active" data-view="annualView">📈 年間推移・品種別分析</button>
+      <button class="main-nav-btn" data-view="annualEquipmentView">⚙️ 年間推移・設備別分析</button>
+      <button class="main-nav-btn" data-view="monthlyView">📅 単月詳細集約 (日別・1時間)</button>
+    </nav>
+
+    <!-- =========================================================================
+         ビュー 1: 年間推移・品種別分析 (Excel原紙完全再現)
+         ========================================================================= -->
+    <section id="annualView" class="view-section active">
+
+      <!-- コントロールツールバー -->
+      <div class="toolbar-card">
+        <div class="toolbar-group">
+          <span class="toolbar-label">対象年度:</span>
+          <select id="fiscalYearSelector" class="select-control">
+            <option value="">（データ未読込）</option>
+          </select>
+        </div>
+
+        <div class="toolbar-group">
+          <span class="toolbar-label">操業評価モード:</span>
+          <div class="pill-group" id="operationModePills">
+            <button class="pill-btn active" data-mode="combined">水運転＋実充填</button>
+            <button class="pill-btn" data-mode="waterOnly">水運転のみ</button>
+            <button class="pill-btn" data-mode="fillingOnly">実充填のみ</button>
+          </div>
+        </div>
+
+        <div class="toolbar-group">
+          <span class="toolbar-label">表示指標:</span>
+          <select id="metricSelector" class="select-control">
+            <option value="powerKwh" selected>電力量 (kWh)</option>
+            <option value="operationMin">操業時間 (分)</option>
+            <option value="productionBottles">生産本数 (本)</option>
+            <option value="kwhPerBottle">単位本電力量 (kWh/本)</option>
+            <option value="kwhPerMinute">単位時間電力量 (kWh/分)</option>
+            <option value="powerCostYen">電力コスト (円)</option>
+            <option value="costPerBottle">単位本コスト (円/本)</option>
+            <option value="costPerMinute">単位時間コスト (円/分)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 年間KPIサマリーカード -->
+      <div class="kpi-grid">
+        <div class="kpi-card" style="--card-color: var(--primary);">
+          <div class="kpi-label">年間総電力量</div>
+          <div class="kpi-value"><span id="annualTotalKwh">---</span><span class="kpi-unit">kWh</span></div>
+          <div class="kpi-sub">4月〜3月 年間累計実績値</div>
+        </div>
+        <div class="kpi-card" style="--card-color: var(--success);">
+          <div class="kpi-label">年間操業時間</div>
+          <div class="kpi-value"><span id="annualTotalHours">---</span><span class="kpi-unit">時間</span></div>
+          <div class="kpi-sub">選択中の操業モード合計</div>
+        </div>
+        <div class="kpi-card" style="--card-color: var(--warning);">
+          <div class="kpi-label">年間総生産本数</div>
+          <div class="kpi-value"><span id="annualTotalBottles">---</span><span class="kpi-unit">本</span></div>
+          <div class="kpi-sub">月報PET累計生産本数</div>
+        </div>
+        <div class="kpi-card" style="--card-color: #8b5cf6;">
+          <div class="kpi-label">年間平均原単位</div>
+          <div class="kpi-value"><span id="annualAvgKpi">---</span><span class="kpi-unit">kWh/本</span></div>
+          <div class="kpi-sub">年間総電力量 ÷ 総生産本数</div>
+        </div>
+      </div>
+
+      <!-- 年間グラフグリッド -->
+      <div class="chart-grid">
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title" id="annualStackedChartTitle">📊 月別電力使用量集約グラフ (8品種積み上げ)</h2>
+            <span class="toolbar-label" id="currentMetricLabel">電力量 (kWh)</span>
+          </div>
+          <div class="chart-container">
+            <canvas id="annualStackedChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">📈 月別電力使用量推移 (主要品種トレンド)</h2>
+          </div>
+          <div class="chart-container">
+            <canvas id="annualTrendChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- 年間月別集計テーブル (Excel原紙完全再現) -->
+      <div class="table-card">
+        <div class="table-header-bar">
+          <h3 class="table-title">📋 年間月別実績集計表 (<span id="tableMetricTitle">電力量 kWh</span>)</h3>
+          <span class="toolbar-label">月別電力使用量集約グラフ表示(総電力 2024).xlsx 準拠</span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" id="annualDataTable">
+            <thead>
+              <tr>
+                <th>年月</th>
+                <th>累計</th>
+                <th>月計</th>
+                <th>2.0L</th>
+                <th>1.5L</th>
+                <th>1.0L</th>
+                <th>600ｍL丸</th>
+                <th>500ｍL丸</th>
+                <th>500ｍL角</th>
+                <th>350ｍL</th>
+                <th>280ｍL</th>
+              </tr>
+            </thead>
+            <tbody id="annualTableBody">
+              <tr>
+                <td colspan="10" style="text-align:center; padding: 2rem; color: var(--text-muted);">
+                  データを読み込むと、年間月別実績集計表が表示されます
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- =========================================================================
+         ビュー 2: 年間推移・設備別分析 (ユーティリティ・工程別)
+         ========================================================================= -->
+    <section id="annualEquipmentView" class="view-section" style="display: none;">
+
+      <!-- コントロールツールバー -->
+      <div class="toolbar-card">
+        <div class="toolbar-group">
+          <span class="toolbar-label">対象年度:</span>
+          <select id="annualEquipmentYearSelect" class="select-control">
+            <option value="">（データ未読込）</option>
+          </select>
+        </div>
+
+        <div class="toolbar-group">
+          <span class="toolbar-label">グラフ系列モード:</span>
+          <div class="pill-group" id="equipViewModePills">
+            <button class="pill-btn active" data-mode="utilityGroup">ユーティリティ統合</button>
+            <button class="pill-btn" data-mode="detailAll">設備詳細内訳</button>
+          </div>
+        </div>
+
+        <div class="toolbar-group" style="margin-left: auto;">
+          <span style="font-size: 0.85rem; color: var(--text-muted);">
+            ※全工程およびユーティリティ設備（コンプレッサー、ボイラー、純水装置、排水処理、チラー）の月次推移
+          </span>
+        </div>
+      </div>
+
+      <!-- 年間設備別KPIサマリーカード -->
+      <div class="kpi-grid">
+        <div class="kpi-card" style="--card-color: var(--primary);">
+          <div class="kpi-label">年間総電力量</div>
+          <div class="kpi-value"><span id="kpiEquipTotalKwh">---</span><span class="kpi-unit">kWh</span></div>
+          <div class="kpi-sub">全測定盤の年間合算実績</div>
+        </div>
+        <div class="kpi-card" style="--card-color: #0284c7;">
+          <div class="kpi-label">年間ユーティリティ電力量</div>
+          <div class="kpi-value"><span id="kpiEquipUtilityKwh">---</span><span class="kpi-unit">kWh</span></div>
+          <div class="kpi-sub">総電力比: <strong id="kpiEquipUtilityRatio" style="color: #0284c7;">---%</strong></div>
+        </div>
+        <div class="kpi-card" style="--card-color: #38bdf8;">
+          <div class="kpi-label">最大電力消費設備</div>
+          <div class="kpi-value" style="font-size: 1.35rem;"><span id="kpiEquipTopName">---</span></div>
+          <div class="kpi-sub"><span id="kpiEquipTopKwh">---</span> kWh (<span id="kpiEquipTopRatio">---%</span>)</div>
+        </div>
+        <div class="kpi-card" style="--card-color: var(--success);">
+          <div class="kpi-label">年間実充填操業時間</div>
+          <div class="kpi-value"><span id="kpiEquipFillingHours">---</span><span class="kpi-unit">時間</span></div>
+          <div class="kpi-sub">年間総生産稼働時間</div>
+        </div>
+        <div class="kpi-card" style="--card-color: var(--secondary);">
+          <div class="kpi-label">年間水運転時間</div>
+          <div class="kpi-value"><span id="kpiEquipWaterHours">---</span><span class="kpi-unit">時間</span></div>
+          <div class="kpi-sub">年間洗浄・待機運転時間</div>
+        </div>
+      </div>
+
+      <!-- 年間設備別グラフエリア -->
+      <div class="chart-grid">
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">📊 月別設備別・工程別電力推移 (kWh)</h2>
+          </div>
+          <div class="chart-container">
+            <canvas id="annualEquipmentTrendChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">🍩 年間設備別電力比率 (多層円弧内訳)</h2>
+          </div>
+          <div class="chart-container">
+            <canvas id="annualEquipmentDoughnutChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- 年間設備別集計テーブル -->
+      <div class="table-card">
+        <div class="table-header-bar">
+          <h3 class="table-title">📋 年間推移・設備別集計データ表</h3>
+          <span style="font-size: 0.82rem; color: var(--text-muted); margin-left: auto;">
+            ※単位: 電力量 [kWh]、時間 [時間]
+          </span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" id="annualEquipmentTable">
+            <thead>
+              <tr>
+                <th style="min-width: 170px;">設備・工程区分</th>
+                <th style="min-width: 110px; background: rgba(2, 132, 199, 0.08); font-weight: 700;">年間累計</th>
+                <th style="min-width: 85px;">構成比</th>
+                <th>4月</th>
+                <th>5月</th>
+                <th>6月</th>
+                <th>7月</th>
+                <th>8月</th>
+                <th>9月</th>
+                <th>10月</th>
+                <th>11月</th>
+                <th>12月</th>
+                <th>1月</th>
+                <th>2月</th>
+                <th>3月</th>
+              </tr>
+            </thead>
+            <tbody id="annualEquipmentTableBody">
+              <tr>
+                <td colspan="15" style="text-align:center; padding: 2rem; color: var(--text-muted);">
+                  データを読み込むと、年間設備別集計データが表示されます
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- =========================================================================
+         ビュー 3: 単月詳細集約 (日別・1時間)
+         ========================================================================= -->
+    <section id="monthlyView" class="view-section" style="display: none;">
+
+      <!-- ファイルドラッグ＆ドロップゾーン -->
+      <div id="dropzone" class="dropzone-card">
+        <div class="dropzone-icon">📁</div>
+        <div class="dropzone-text">CSV/TXTファイル または 外部Excelをドラッグ＆ドロップ</div>
+        <div class="dropzone-subtext">tag02〜07の電力ロガーデータ、月報PET、かつらぎ計算表を自動判別して即座に集約します</div>
+        <input type="file" id="fileInput" class="hidden-file-input" multiple accept=".txt,.csv,.xlsx,.xls">
+
+        <!-- 検出バッジ -->
+        <div class="file-badges-container">
+          <span id="tag02" class="tag-badge">tag02 (品種・工程)</span>
+          <span id="tag04" class="tag-badge">tag04 (コンプレッサー)</span>
+          <span id="tag05" class="tag-badge">tag05 (1F動力盤)</span>
+          <span id="tag06" class="tag-badge">tag06 (2F動力・電灯盤)</span>
+          <span id="tag07" class="tag-badge">tag07 (抽出・充填盤)</span>
+          <span id="tagEnergy" class="tag-badge excel">かつらぎ計算表 (電気代)</span>
+          <span id="tagPet" class="tag-badge excel">月報PET (生産本数)</span>
+        </div>
+
+        <!-- プログレスバー -->
+        <div id="progressBarContainer" class="progress-bar-container">
+          <div id="progressBarFill" class="progress-bar-fill"></div>
+        </div>
+      </div>
+
+      <!-- 単月コントロールツールバー (年月選択・切替) -->
+      <div class="toolbar-card" style="margin-bottom: 1.5rem;">
+        <div class="toolbar-group">
+          <span class="toolbar-label">表示対象年月:</span>
+          <select id="monthlyYearMonthSelect" class="form-select">
+            <option value="">（データ未読込）</option>
+          </select>
+        </div>
+        <div class="toolbar-group" style="margin-left: auto;">
+          <span id="monthlyDataStatus" style="font-size: 0.85rem; color: var(--text-muted);"></span>
+        </div>
+      </div>
+
+      <!-- 単月KPIサマリーカード -->
+      <div class="kpi-grid">
+        <div class="kpi-card" style="--card-color: var(--primary);">
+          <div class="kpi-label">月間総電力量</div>
+          <div class="kpi-value"><span id="kpiTotalKwh">---</span><span class="kpi-unit">kWh</span></div>
+          <div class="kpi-sub">全測定盤の合算実績値</div>
+        </div>
+        <div class="kpi-card" style="--card-color: var(--success);">
+          <div class="kpi-label">実充填操業時間</div>
+          <div class="kpi-value"><span id="kpiFillingHours">---</span><span class="kpi-unit">時間</span></div>
+          <div class="kpi-sub">ステップ大分類30（実充填）</div>
+        </div>
+        <div class="kpi-card" style="--card-color: var(--secondary);">
+          <div class="kpi-label">水運転時間</div>
+          <div class="kpi-value"><span id="kpiWaterHours">---</span><span class="kpi-unit">時間</span></div>
+          <div class="kpi-sub">ステップ大分類20（水運転）</div>
+        </div>
+        <div class="kpi-card" style="--card-color: var(--warning);">
+          <div class="kpi-label">電力量単価</div>
+          <div class="kpi-value"><span id="kpiUnitPrice">---</span><span class="kpi-unit">円/kWh</span></div>
+          <div class="kpi-sub">エネルギー計算表より算出</div>
+        </div>
+        <div class="kpi-card" style="--card-color: #8b5cf6;">
+          <div class="kpi-label">集約データ行数</div>
+          <div class="kpi-value"><span id="kpiHoursCount">---</span><span class="kpi-unit">時間分</span></div>
+          <div class="kpi-sub">1分値約4.5万行から圧縮完了</div>
+        </div>
+      </div>
+
+      <!-- 単月グラフ -->
+      <div class="chart-grid">
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">📊 日別電力使用量推移 (kWh)</h2>
+          </div>
+          <div class="chart-container">
+            <canvas id="dailyChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">🍩 工程別電力比率</h2>
+          </div>
+          <div class="chart-container">
+            <canvas id="categoryChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- 単月テーブル -->
+      <div class="table-card">
+        <div class="table-header-bar">
+          <h3 class="table-title">📋 日別工程別集計データ</h3>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>年月日</th>
+                <th>総電力(kWh)</th>
+                <th style="background: rgba(2, 132, 199, 0.08); color: #0284c7; font-weight: 700;">ユーティリティ</th>
+                <th>コンプレッサー</th>
+                <th>ボイラー</th>
+                <th>純水装置</th>
+                <th>排水処理</th>
+                <th>チラー</th>
+                <th>調合抽出</th>
+                <th>供給</th>
+                <th>充填</th>
+                <th>包装</th>
+                <th>実充填(分)</th>
+                <th>水運転(分)</th>
+              </tr>
+            </thead>
+            <tbody id="dailyTableBody">
+              <tr>
+                <td colspan="14" style="text-align: center; color: var(--text-light); padding: 2rem;">
+                  ファイルをドラッグ＆ドロップするか、デモデータを読み込んでください
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <!-- トーストコンテナ -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- グローバルローディングオーバーレイ -->
+  <div id="globalLoadingOverlay" class="loading-overlay" style="display: none;">
+    <div id="loadingCard" class="loading-card">
+      <div id="loadingSpinner" class="loading-spinner"></div>
+      <div id="loadingMessage" class="loading-text">データを読み込み中...</div>
+      
+      <!-- プログレス進捗表示コンテナ (スプレッドシート反映等の長大処理時に表示) -->
+      <div id="loadingProgressArea" class="loading-progress-area" style="display: none;">
+        <div class="loading-progress-bar-bg">
+          <div id="loadingProgressBarFill" class="loading-progress-bar-fill" style="width: 0%;"></div>
+        </div>
+        <div class="loading-progress-meta">
+          <span id="loadingProgressDetail" class="loading-progress-detail">処理中...</span>
+          <span id="loadingProgressPercent" class="loading-progress-percent">0%</span>
+        </div>
+        <!-- 完了ログミニリスト -->
+        <div id="loadingLogList" class="loading-log-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 目盛りスケール設定モーダル -->
+  <div id="scaleSettingModal" class="modal-overlay" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title">⚙️ グラフ目盛りスケール設定</h3>
+        <button id="closeScaleModalBtn" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="scale-mode-selector">
+          <label class="scale-mode-title">スケール方式の選択:</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="scaleMode" value="auto" id="scaleModeAuto" checked>
+              <div class="radio-content">
+                <strong>🟢 自動最適化方式</strong>
+                <p>全データから最大値を算出し、月や年度を切り替えても目盛りを統一</p>
+              </div>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="scaleMode" value="fixed" id="scaleModeFixed">
+              <div class="radio-content">
+                <strong>🔵 固定値方式</strong>
+                <p>以下の設定値（上限）で目盛りスケールを完全固定</p>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div id="fixedScaleInputsArea" class="fixed-inputs-container">
+          <h4 class="settings-section-title">📊 固定値設定 (固定値方式で使用)</h4>
+          
+          <!-- 単月詳細集約 -->
+          <div class="settings-group">
+            <div class="settings-group-header">📅 単月詳細集約画面</div>
+            <div class="form-row">
+              <label for="scaleFixedDailyKwh">日別電力推移グラフ (最大値):</label>
+              <div class="input-with-unit">
+                <input type="number" id="scaleFixedDailyKwh" step="1000" min="0">
+                <span class="unit-text">kWh</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 年間推移・設備別分析 -->
+          <div class="settings-group">
+            <div class="settings-group-header">⚙️ 年間推移・設備別分析画面</div>
+            <div class="form-row">
+              <label for="scaleFixedEquipKwh">月別設備電力推移グラフ (最大値):</label>
+              <div class="input-with-unit">
+                <input type="number" id="scaleFixedEquipKwh" step="10000" min="0">
+                <span class="unit-text">kWh</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 年間推移・品種別分析 -->
+          <div class="settings-group">
+            <div class="settings-group-header">📈 年間推移・品種別分析画面 (プルダウン各項目)</div>
+            <div class="form-grid">
+              <div class="form-row">
+                <label for="scaleFixedPowerKwh">1. 電力量:</label>
+                <div class="input-with-unit">
+                  <input type="number" id="scaleFixedPowerKwh" step="10000" min="0">
+                  <span class="unit-text">kWh</span>
+                </div>
+              </div>
+              <div class="form-row">
+                <label for="scaleFixedOpMin">2. 操業時間:</label>
+                <div class="input-with-unit">
+                  <input type="number" id="scaleFixedOpMin" step="1000" min="0">
+                  <span class="unit-text">分</span>
+                </div>
+              </div>
+              <div class="form-row">
+                <label for="scaleFixedBottles">3. 生産本数:</label>
+                <div class="input-with-unit">
+                  <input type="number" id="scaleFixedBottles" step="100000" min="0">
+                  <span class="unit-text">本</span>
+                </div>
+              </div>
+              <div class="form-row">
+                <label for="scaleFixedCostYen">4. 電力コスト:</label>
+                <div class="input-with-unit">
+                  <input type="number" id="scaleFixedCostYen" step="100000" min="0">
+                  <span class="unit-text">円</span>
+                </div>
+              </div>
+              <div class="form-row">
+                <label for="scaleFixedKwhPerBottle">5. 単位本電力量:</label>
+                <div class="input-with-unit">
+                  <input type="number" id="scaleFixedKwhPerBottle" step="0.01" min="0">
+                  <span class="unit-text">kWh/本</span>
+                </div>
+              </div>
+              <div class="form-row">
+                <label for="scaleFixedKwhPerMinute">6. 単位時間電力量:</label>
+                <div class="input-with-unit">
+                  <input type="number" id="scaleFixedKwhPerMinute" step="1" min="0">
+                  <span class="unit-text">kWh/分</span>
+                </div>
+              </div>
+              <div class="form-row">
+                <label for="scaleFixedCostPerBottle">7. 単位本コスト:</label>
+                <div class="input-with-unit">
+                  <input type="number" id="scaleFixedCostPerBottle" step="0.1" min="0">
+                  <span class="unit-text">円/本</span>
+                </div>
+              </div>
+              <div class="form-row">
+                <label for="scaleFixedCostPerMinute">8. 単位時間コスト:</label>
+                <div class="input-with-unit">
+                  <input type="number" id="scaleFixedCostPerMinute" step="10" min="0">
+                  <span class="unit-text">円/分</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="resetScaleModalBtn" class="btn btn-outline-secondary">初期値に戻す</button>
+        <button id="saveScaleModalBtn" class="btn btn-primary">保存してグラフに適用</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- スクリプト読み込み (GAS環境用インクルード) -->
+  <?!= include('js/config'); ?>
+  <?!= include('js/etl/csvParser'); ?>
+  <?!= include('js/etl/hourlyAggregator'); ?>
+  <?!= include('js/etl/excelReader'); ?>
+  <?!= include('js/services/categoryService'); ?>
+  <?!= include('js/services/kpiService'); ?>
+  <?!= include('js/services/annualService'); ?>
+  <?!= include('js/components/charts'); ?>
+  <?!= include('js/app'); ?>
+
+  <!-- ローカル開発環境用フォールバック (GAS環境では上記でロード済みのため二重ロードを防止) -->
+  <script>
+    if (typeof AppConfig === 'undefined') {
+      var scripts = [
+        'js/config.js',
+        'js/etl/csvParser.js',
+        'js/etl/hourlyAggregator.js',
+        'js/etl/excelReader.js',
+        'js/services/categoryService.js',
+        'js/services/kpiService.js',
+        'js/services/annualService.js',
+        'js/components/charts.js',
+        'js/app.js'
+      ];
+      function loadNextScript(index) {
+        if (index >= scripts.length) return;
+        var s = document.createElement('script');
+        s.src = scripts[index] + '?v=20261004_9';
+        s.onload = function() { loadNextScript(index + 1); };
+        document.body.appendChild(s);
+      }
+      loadNextScript(0);
+    }
+  </script>
+
+</body>
+</html>
