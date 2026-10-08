@@ -1,6 +1,9 @@
 /**
  * gas_app/Code.gs
  * エネルギー使用量集計システム GASバックエンド (doGet / スプレッドシートへの保存・復元・エクスポート用データ取得)
+ * 電力: saveAggregatedData / loadSavedSummaryFromSpreadsheet
+ * 燃料エネルギー: saveFuelMonthlyData / loadSavedFuelData
+ * 共通: getSheetsDataForExport
  */
 
 /**
@@ -325,7 +328,156 @@ function setupSheets(ss) {
     sVariety.setFrozenRows(1);
   }
 
+  // 5. 燃料集約 (A重油・LNG の熱量と購入費用、品種別本数)
+  setupFuelSheet(ss);
+
   return { initialized: true };
+}
+
+// =========================================================================
+// 燃料エネルギー (燃料集約シート)
+// =========================================================================
+
+/**
+ * 燃料集約シートの名前
+ */
+function getFuelSheetName() {
+  return (CONFIG.SHEET_NAMES && CONFIG.SHEET_NAMES.FUEL) || '燃料集約';
+}
+
+/**
+ * 燃料集約シートのヘッダー (月1行、13列)
+ */
+function getFuelSheetHeader() {
+  var header = ['対象年月', 'A重油 熱量(GJ)', 'LNG 熱量(GJ)', 'A重油 購入費用(千円)', 'LNG 購入費用(千円)'];
+  var vKeys = CONFIG.VARIETY_KEYS;
+  for (var i = 0; i < vKeys.length; i++) header.push(vKeys[i] + ' (本)');
+  return header;
+}
+
+/**
+ * 燃料集約シートを取得する (無ければ作成する)
+ */
+function setupFuelSheet(ss) {
+  var sheet = ss.getSheetByName(getFuelSheetName());
+  if (!sheet) {
+    var header = getFuelSheetHeader();
+    sheet = ss.insertSheet(getFuelSheetName());
+    sheet.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold').setBackground('#fce8e6');
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+/**
+ * 燃料の月次データをスプレッドシートへ書き込む (複数月をまとめて処理。対象年月が一致する行は上書き、無ければ末尾へ追記)
+ * @param {Array<Object>} rows [{ yearMonth, heavyOilGj, lngGj, heavyOilCostThousandYen, lngCostThousandYen, bottles }]
+ *   bottles は { [品種キー]: 本数 }。品種別本数が無い月は null (シート上は空欄)
+ * @returns {Object} { success, savedCount, updatedCount, appendedCount }
+ */
+function saveFuelMonthlyData(rows) {
+  try {
+    if (!rows || !rows.length) return { success: false, error: '保存する燃料データがありません' };
+
+    var ss = getSpreadsheet();
+    if (!ss) return { success: false, error: 'スプレッドシートが見つかりません。Config.gs の SPREADSHEET_ID を確認してください。' };
+
+    var sheet = setupFuelSheet(ss);
+    var colCount = getFuelSheetHeader().length;
+    var vKeys = CONFIG.VARIETY_KEYS;
+    var numOrBlank = function (v) { return (typeof v === 'number' && isFinite(v)) ? v : ''; };
+
+    // 既存の行を読み込み、対象年月 → 行位置 の対応を作る
+    var lastRow = sheet.getLastRow();
+    var sheetRows = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, colCount).getValues() : [];
+    var rowIndexByYm = {};
+    for (var r = 0; r < sheetRows.length; r++) {
+      var key = String(sheetRows[r][0] || '').trim();
+      if (key && rowIndexByYm[key] === undefined) rowIndexByYm[key] = r;
+    }
+
+    var updatedCount = 0;
+    var appendedCount = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i] || {};
+      var ym = String(row.yearMonth || '').trim();
+      if (!/^\d{6}$/.test(ym)) continue;
+
+      var newRow = [ym, numOrBlank(row.heavyOilGj), numOrBlank(row.lngGj), numOrBlank(row.heavyOilCostThousandYen), numOrBlank(row.lngCostThousandYen)];
+      for (var v = 0; v < vKeys.length; v++) {
+        newRow.push(row.bottles ? (Number(row.bottles[vKeys[v]]) || 0) : '');
+      }
+
+      if (rowIndexByYm[ym] !== undefined) {
+        sheetRows[rowIndexByYm[ym]] = newRow;
+        updatedCount++;
+      } else {
+        rowIndexByYm[ym] = sheetRows.length;
+        sheetRows.push(newRow);
+        appendedCount++;
+      }
+    }
+
+    if (updatedCount + appendedCount > 0) {
+      sheet.getRange(2, 1, sheetRows.length, colCount).setValues(sheetRows);
+    }
+
+    return { success: true, savedCount: updatedCount + appendedCount, updatedCount: updatedCount, appendedCount: appendedCount };
+  } catch (err) {
+    Logger.log('saveFuelMonthlyData error: ' + err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * 起動時の復元用に、燃料集約シートの保存済みデータを取得する
+ * @returns {Object} { success, months: { [ym]: { heavyOilGj, lngGj, heavyOilCostThousandYen, lngCostThousandYen, bottles } } }
+ *   空欄のセルは null。品種別本数の8列がすべて空欄の月は bottles が null
+ */
+function loadSavedFuelData() {
+  try {
+    var ss = getSpreadsheet();
+    if (!ss) return { success: false, error: 'スプレッドシートが見つかりません' };
+
+    var months = {};
+    var sheet = ss.getSheetByName(getFuelSheetName());
+    if (!sheet || sheet.getLastRow() < 2) return { success: true, months: months };
+
+    var vKeys = CONFIG.VARIETY_KEYS;
+    var colCount = Math.min(getFuelSheetHeader().length, sheet.getLastColumn());
+    var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, colCount).getValues();
+    var numOrNull = function (v) {
+      if (v === '' || v === null || v === undefined) return null;
+      var n = (typeof v === 'number') ? v : parseFloat(v);
+      return isFinite(n) ? n : null;
+    };
+
+    for (var r = 0; r < values.length; r++) {
+      var ym = String(values[r][0] || '').trim();
+      if (!/^\d{6}$/.test(ym)) continue;
+
+      var bottles = {};
+      var hasBottles = false;
+      for (var v = 0; v < vKeys.length; v++) {
+        var cell = numOrNull(values[r][5 + v]);
+        if (cell !== null) hasBottles = true;
+        bottles[vKeys[v]] = cell === null ? 0 : cell;
+      }
+
+      months[ym] = {
+        heavyOilGj: numOrNull(values[r][1]),
+        lngGj: numOrNull(values[r][2]),
+        heavyOilCostThousandYen: numOrNull(values[r][3]),
+        lngCostThousandYen: numOrNull(values[r][4]),
+        bottles: hasBottles ? bottles : null
+      };
+    }
+
+    return { success: true, months: months };
+  } catch (err) {
+    Logger.log('loadSavedFuelData error: ' + err.message);
+    return { success: false, error: err.message };
+  }
 }
 
 /**
@@ -555,8 +707,8 @@ function loadSavedSummaryFromSpreadsheet() {
 }
 
 /**
- * Excelエクスポート用に「日別集約」「KPI評価」「品種別集約」シートの全生データを取得
- * @returns {Object} { success: true, sheets: { '日別集約': [...], 'KPI評価': [...], '品種別集約': [...] } }
+ * Excelエクスポート用に「日別集約」「KPI評価」「品種別集約」「燃料集約」シートの全生データを取得
+ * @returns {Object} { success: true, sheets: { '日別集約': [...], 'KPI評価': [...], '品種別集約': [...], '燃料集約': [...] } }
  */
 function getSheetsDataForExport() {
   try {
@@ -566,7 +718,8 @@ function getSheetsDataForExport() {
     var targetSheetNames = [
       CONFIG.SHEET_NAMES.DAILY,   // '日別集約'
       CONFIG.SHEET_NAMES.KPI,     // 'KPI評価'
-      CONFIG.SHEET_NAMES.VARIETY  // '品種別集約'
+      CONFIG.SHEET_NAMES.VARIETY, // '品種別集約'
+      getFuelSheetName()          // '燃料集約'
     ];
 
     var resultSheets = {};

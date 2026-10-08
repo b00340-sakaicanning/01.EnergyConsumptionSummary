@@ -74,6 +74,18 @@
     { key: 'costPerMinute', name: '単位時間コスト', unit: '円/分', digits: 2 }
   ];
 
+  // 燃料エネルギー (A重油 + LNG) の評価指標マスター。isRate が true のものは原単位・平均系
+  const FUEL_METRICS = [
+    { key: 'fuelMj', name: '燃料エネルギー', unit: 'MJ', digits: 0, isRate: false },
+    { key: 'operationMin', name: '操業時間', unit: '分', digits: 0, isRate: false },
+    { key: 'productionBottles', name: '生産本数', unit: '本', digits: 0, isRate: false },
+    { key: 'mjPerBottle', name: '単位本燃料エネルギー', unit: 'MJ/本', digits: 4, isRate: true },
+    { key: 'mjPerMinute', name: '単位時間燃料エネルギー', unit: 'MJ/分', digits: 2, isRate: true },
+    { key: 'fuelCostYen', name: '燃料エネルギーコスト', unit: '円', digits: 0, isRate: false },
+    { key: 'costPerBottle', name: '単位本コスト', unit: '円/本', digits: 4, isRate: true },
+    { key: 'costPerMinute', name: '単位時間コスト', unit: '円/分', digits: 2, isRate: true }
+  ];
+
   // 原単位・平均系の指標 (単位本、単位時間)。総量系と違い、積み上げ・累計の対象にならない
   const RATE_METRIC_KEYS = ['kwhPerBottle', 'costPerBottle', 'kwhPerMinute', 'costPerMinute'];
 
@@ -323,6 +335,7 @@
     VARIETY_KEYS,
     VARIETY_MAPPING,
     EVALUATION_METRICS,
+    FUEL_METRICS,
     RATE_METRIC_KEYS,
     FISCAL_MONTH_ORDER,
     FISCAL_MONTH_LABELS,

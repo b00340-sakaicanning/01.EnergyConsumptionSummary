@@ -127,4 +127,81 @@ assert.strictEqual(res.sheetFound, true);
 assert.strictEqual(res.unitPriceYenPerKwh, null, '対象月が空欄なら単価は null');
 console.log('Energy calculation table PASSED!');
 
+console.log('=== Test 5: エネルギー計算表 燃料 (A重油・LNG) の読み取り ===');
+// 月見出し行に入る日付 (Excelのシリアル値)
+const serial = (year, month) => (Date.UTC(year, month - 1, 1) - Date.UTC(1899, 11, 30)) / 86400000;
+const headerRow = fy => energyRow('', '税込', FISCAL_MONTHS.map(mo => serial(mo >= 4 ? fy : fy + 1, mo)));
+const seq = (start, step) => FISCAL_MONTHS.map((_, i) => start + i * step);
+/**
+ * 年度シートの燃料まわりの行を組み立てる (実ファイルと同じ並び。行番号は年度で変わるため、先頭の空行数を変えられるようにしている)
+ */
+function buildFuelSheet(fy, options = {}) {
+  const rows = [];
+  for (let i = 0; i < (options.leadingRows || 3); i++) rows.push([]);
+  // 年間サマリ (月見出し行より上にも A重油・LNG の文字がある)
+  rows.push(['A重油', '年間', 1, 2]);
+  rows.push(['LNG', '年間', 3, 4]);
+  rows.push(headerRow(options.headerFiscalYear || fy));
+  rows.push(energyRow('A重油', '前月末残(kl)', seq(10, 1)));
+  rows.push(energyRow('', '入荷合計', seq(20, 1)));
+  rows.push(energyRow('※税込み', '購入費用（千円）', options.oilCost || seq(1000, 10)));
+  rows.push(energyRow('', '使用量（ｋｌ）', seq(5, 1)));
+  rows.push(energyRow('A重油(本社）', '入荷合計', Array(12).fill(7)));
+  rows.push(energyRow('※税込み', '費用（千円）', Array(12).fill(77777)));
+  rows.push(energyRow(38.9, '熱量GJ', options.oilHeat || seq(300, 5)));
+  rows.push(energyRow(0.0193, 't-CO2', seq(1, 0)));
+  rows.push(energyRow('LNG', '前月末残(t)', seq(15, 0)));
+  rows.push(energyRow('', '使用量（t）', seq(90, 1)));
+  rows.push(energyRow(54.7, '熱量GJ', options.lngHeat || seq(5000, 100)));
+  rows.push(energyRow(0.0139, 't-CO2', seq(1, 0)));
+  if (!options.noLngCostRow) rows.push(energyRow(0.1, '購入費用（千円）　※税込み', options.lngCost || seq(9000, 50)));
+  rows.push(energyRow('使用電力', '千ｋWh', seq(280, 1)));
+  rows.push(energyRow('', '熱量GJ', Array(12).fill(88888)));
+  rows.push(energyRow('※税込み', '使用量（千円）', seq(6000, 1)));
+  rows.push(energyRow('太陽光発電量', '千ｋWh', seq(20, 0)));
+  rows.push(energyRow(8.64, '熱量GJ', Array(12).fill(99999)));
+  return rows;
+}
+const blankLate = values => values.map((v, i) => (i >= 6 ? '' : v)); // 10月以降が未入力
+const fuelWb = makeWorkbook({
+  '年度推移_予測用（二次関数）': buildFuelSheet(2024),
+  '2024': buildFuelSheet(2024),
+  '2025': buildFuelSheet(2025, { leadingRows: 9, oilCost: blankLate(seq(1000, 10)), oilHeat: seq(300, 5).map((v, i) => (i >= 6 ? 0 : v)), lngHeat: seq(5000, 100).map((v, i) => (i >= 6 ? 0 : v)) }),
+  '2015': buildFuelSheet(2015, { noLngCostRow: true, lngHeat: Array(12).fill(0) }),
+  '2016': buildFuelSheet(2016, { noLngCostRow: true }),
+  '2022': buildFuelSheet(2022, { headerFiscalYear: 2021 })
+});
+
+res = ExcelReader.parseFuelEnergyTable(fuelWb, 2024);
+assert.strictEqual(res.sheetFound, true);
+assert.strictEqual(res.layoutFound, true);
+assert.deepStrictEqual(Object.keys(res.months), ['202404', '202405', '202406', '202407', '202408', '202409', '202410', '202411', '202412', '202501', '202502', '202503']);
+assert.deepStrictEqual(res.months['202404'], { heavyOilGj: 300, lngGj: 5000, heavyOilCostThousandYen: 1000, lngCostThousandYen: 9000 },
+  'A重油(本社）の費用や、電気・太陽光の熱量GJを読まないこと');
+assert.deepStrictEqual(res.months['202503'], { heavyOilGj: 355, lngGj: 6100, heavyOilCostThousandYen: 1110, lngCostThousandYen: 9550 }, '3月は年度の最後の列');
+
+res = ExcelReader.parseFuelEnergyTable(fuelWb, '2025');
+assert.strictEqual(res.layoutFound, true, '行の位置が年度で変わっても読めること');
+assert.strictEqual(res.months['202504'].heavyOilGj, 300);
+assert.deepStrictEqual(res.months['202510'], { heavyOilGj: 0, lngGj: 0, heavyOilCostThousandYen: null, lngCostThousandYen: 9300 }, '空欄のセルは null、数式が返す 0 は 0');
+
+res = ExcelReader.parseFuelEnergyTable(fuelWb, 2023);
+assert.strictEqual(res.sheetFound, false, '年度のシートが無い場合は、予測用シートなどで代用しないこと');
+assert.strictEqual(res.layoutFound, false);
+assert.deepStrictEqual(res.months, {});
+
+res = ExcelReader.parseFuelEnergyTable(fuelWb, 2015);
+assert.strictEqual(res.layoutFound, true, 'LNGの費用の行が無くても、LNGを使っていない年度は読めること');
+assert.strictEqual(res.months['201504'].lngCostThousandYen, null);
+assert.strictEqual(res.months['201504'].heavyOilGj, 300);
+
+res = ExcelReader.parseFuelEnergyTable(fuelWb, 2016);
+assert.strictEqual(res.sheetFound, true);
+assert.strictEqual(res.layoutFound, false, 'LNGを使っているのに費用の行が無い年度は、費用が不完全になるため読まないこと');
+assert.deepStrictEqual(res.months, {});
+
+res = ExcelReader.parseFuelEnergyTable(fuelWb, 2022);
+assert.strictEqual(res.layoutFound, false, '月見出しの年月が対象年度と合わないシートは読まないこと');
+console.log('Fuel energy table PASSED!');
+
 console.log('EXCEL READER VERIFIED SUCCESSFULLY!');

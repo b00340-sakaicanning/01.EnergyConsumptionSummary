@@ -14,7 +14,8 @@ var CONFIG = {
     HOURLY: '1時間集計(ALL)',
     DAILY: '日別集約',
     VARIETY: '品種別集約',
-    KPI: 'KPI評価'
+    KPI: 'KPI評価',
+    FUEL: '燃料集約'
   },
 
   // 品種8大分類キー

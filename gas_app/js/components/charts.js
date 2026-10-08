@@ -15,8 +15,9 @@
   // チャートインスタンス管理
   let dailyChartInstance = null;
   let categoryChartInstance = null;
-  let annualStackedChartInstance = null;
-  let annualTrendChartInstance = null;
+  // 品種別の年間グラフ2種は、電力と燃料エネルギーの両方の画面で使うため、canvas ごとにインスタンスを持つ
+  const annualStackedChartInstances = {};
+  const annualTrendChartInstances = {};
   let annualEquipTrendChartInstance = null;
   let annualEquipDoughnutChartInstance = null;
 
@@ -121,14 +122,15 @@
     const ctx = document.getElementById(canvasId);
     if (!ctx) return;
 
-    if (annualStackedChartInstance) {
-      annualStackedChartInstance.destroy();
+    if (annualStackedChartInstances[canvasId]) {
+      annualStackedChartInstances[canvasId].destroy();
     }
 
     const varietyKeys = AppConfig.VARIETY_KEYS;
 
     // 原単位・平均系指標かどうかの判定 (単位本、単位時間)
-    const isRateMetric = AppConfig.RATE_METRIC_KEYS.includes(metricInfo.key);
+    // 指標定義に isRate があればそれを使う (燃料エネルギーの指標)。無ければ電力の指標キーで判定する
+    const isRateMetric = metricInfo.isRate !== undefined ? metricInfo.isRate : AppConfig.RATE_METRIC_KEYS.includes(metricInfo.key);
 
     // 1. 各品種のバーデータセット
     const datasets = varietyKeys.map(vk => {
@@ -282,7 +284,7 @@
       };
     }
 
-    annualStackedChartInstance = new Chart(ctx, {
+    annualStackedChartInstances[canvasId] = new Chart(ctx, {
       data: {
         labels: monthLabels,
         datasets: datasets
@@ -332,8 +334,8 @@
     const ctx = document.getElementById(canvasId);
     if (!ctx) return;
 
-    if (annualTrendChartInstance) {
-      annualTrendChartInstance.destroy();
+    if (annualTrendChartInstances[canvasId]) {
+      annualTrendChartInstances[canvasId].destroy();
     }
 
     const varietyKeys = AppConfig.VARIETY_KEYS;
@@ -363,7 +365,7 @@
     const trendMax = scaleOptions && scaleOptions.trendMax > 0 ? scaleOptions.trendMax
       : (scaleOptions && scaleOptions.max > 0 ? scaleOptions.max : undefined);
 
-    annualTrendChartInstance = new Chart(ctx, {
+    annualTrendChartInstances[canvasId] = new Chart(ctx, {
       type: 'line',
       data: {
         labels: monthLabels,

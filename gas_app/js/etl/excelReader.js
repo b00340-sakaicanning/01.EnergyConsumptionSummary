@@ -257,6 +257,99 @@
   }
 
   /**
+   * かつらぎ工場エネルギー計算表から、対象年度の燃料 (A重油・LNG) の月別データを抽出する
+   *
+   * 年度シートの月見出し行より下を、A列の「A重油」「LNG」「使用電力」で区間に分け、
+   * 各区間の中で B列が「熱量GJ」の行と「購入費用（千円）」で始まる行を読む。
+   * 行番号は年度によって変わるため固定しない。「A重油(本社）」の費用や、電気・太陽光の熱量GJは区間・ラベルの条件で対象外になる
+   *
+   * @param {ArrayBuffer|Uint8Array|Workbook} workbookData
+   * @param {number|string} fiscalYear 年度 (例: 2024 → 2024年4月〜2025年3月)
+   * @returns {Object} { fiscalYear, sheetFound, layoutFound, months: { [ym]: { heavyOilGj, lngGj, heavyOilCostThousandYen, lngCostThousandYen } } }
+   *   sheetFound: 対象年度のシートがあるか / layoutFound: 必要な行をすべて特定できたか (false の場合 months は空)
+   *   各値は数値。セルが空欄の場合は null
+   */
+  function parseFuelEnergyTable(workbookData, fiscalYear) {
+    const XLSX = XLSXLib || (typeof window !== 'undefined' ? window.XLSX : (typeof global !== 'undefined' ? global.XLSX : null));
+    if (!XLSX) {
+      throw new Error('SheetJS (XLSX) library is not loaded');
+    }
+
+    const wb = typeof workbookData.Sheets === 'object' ? workbookData : XLSX.read(workbookData, { type: 'array' });
+    const fy = parseInt(fiscalYear, 10);
+    const result = { fiscalYear: fy, sheetFound: false, layoutFound: false, months: {} };
+
+    const targetSheetName = findFiscalYearSheet(wb.SheetNames, fy);
+    if (!targetSheetName) return result;
+    result.sheetFound = true;
+
+    const data = XLSX.utils.sheet_to_json(wb.Sheets[targetSheetName], { header: 1, raw: true });
+    const label = v => (v === undefined || v === null) ? '' : String(v).normalize('NFKC').replace(/[\s　]/g, '');
+    const toNumber = v => {
+      if (typeof v === 'number') return isFinite(v) ? v : null;
+      if (typeof v === 'string' && v.trim() !== '' && !isNaN(parseFloat(v))) return parseFloat(v);
+      return null;
+    };
+
+    // 対象年度の年月 (4月〜翌3月) と、その列位置
+    const monthCols = AppConfig.FISCAL_MONTH_ORDER.map(m => ({
+      ym: `${m >= 4 ? fy : fy + 1}${String(m).padStart(2, '0')}`,
+      col: getFiscalMonthColIndex(m)
+    }));
+
+    // 1. 月見出し行: 12か月分の列に、対象年度の各月の日付 (Excelのシリアル値) が並ぶ行
+    const serialToYm = serial => {
+      const d = new Date(Date.UTC(1899, 11, 30) + Math.round(serial) * 86400000);
+      return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    };
+    let headerRowIdx = -1;
+    for (let r = 0; r < Math.min(data.length, 60); r++) {
+      const row = data[r] || [];
+      if (monthCols.every(mc => typeof row[mc.col] === 'number' && serialToYm(row[mc.col]) === mc.ym)) {
+        headerRowIdx = r;
+        break;
+      }
+    }
+    if (headerRowIdx < 0) return result;
+
+    // 2. A列のラベルで区間を特定 (A重油 → LNG → 使用電力 の順に並ぶ)
+    const findRow = (from, to, predicate) => {
+      for (let r = from; r < Math.min(to, data.length); r++) {
+        if (predicate(data[r] || [])) return r;
+      }
+      return -1;
+    };
+    const oilStart = findRow(headerRowIdx + 1, data.length, row => label(row[0]) === 'A重油');
+    const lngStart = oilStart < 0 ? -1 : findRow(oilStart + 1, data.length, row => label(row[0]) === 'LNG');
+    const powerStart = lngStart < 0 ? -1 : findRow(lngStart + 1, data.length, row => label(row[0]).indexOf('使用電力') === 0);
+    if (oilStart < 0 || lngStart < 0 || powerStart < 0) return result;
+
+    // 3. 各区間の中で、熱量と購入費用の行を特定
+    const isHeatRow = row => label(row[1]) === '熱量GJ';
+    const isCostRow = row => label(row[1]).indexOf('購入費用(千円)') === 0;
+    const oilHeatRow = findRow(oilStart, lngStart, isHeatRow);
+    const oilCostRow = findRow(oilStart, lngStart, isCostRow);
+    const lngHeatRow = findRow(lngStart, powerStart, isHeatRow);
+    const lngCostRow = findRow(lngStart, powerStart, isCostRow);
+    if (oilHeatRow < 0 || oilCostRow < 0 || lngHeatRow < 0) return result;
+
+    const valueAt = (rowIdx, col) => rowIdx < 0 ? null : toNumber((data[rowIdx] || [])[col]);
+    // LNGの購入費用の行が無い年度は、LNGを使っていない (熱量がすべて0) 場合に限り読み取り可とする
+    if (lngCostRow < 0 && monthCols.some(mc => (valueAt(lngHeatRow, mc.col) || 0) > 0)) return result;
+
+    result.layoutFound = true;
+    monthCols.forEach(mc => {
+      result.months[mc.ym] = {
+        heavyOilGj: valueAt(oilHeatRow, mc.col),
+        lngGj: valueAt(lngHeatRow, mc.col),
+        heavyOilCostThousandYen: valueAt(oilCostRow, mc.col),
+        lngCostThousandYen: valueAt(lngCostRow, mc.col)
+      };
+    });
+    return result;
+  }
+
+  /**
    * 4月始まりの年度月インデックス（4月=2, 5月=3 ... 3月=13 等の目安）
    */
   function getFiscalMonthColIndex(calendarMonth) {
@@ -267,6 +360,7 @@
 
   return {
     parseEnergyCalculationTable,
-    parsePetMonthlyReport
+    parsePetMonthlyReport,
+    parseFuelEnergyTable
   };
 }));

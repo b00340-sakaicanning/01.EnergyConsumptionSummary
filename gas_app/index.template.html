@@ -26,8 +26,8 @@
       <div class="header-logo">
         <div class="logo-icon">⚡</div>
         <div>
-          <h1>工場エネルギー（電力）使用量集計・分析システム</h1>
-          <p>月別電力使用量集約グラフ・品種別推移 ＆ 原単位KPIダッシュボード</p>
+          <h1>工場エネルギー使用量集計・分析システム</h1>
+          <p id="appSubtitle">月別電力使用量集約グラフ・品種別推移 ＆ 原単位KPIダッシュボード</p>
         </div>
       </div>
       <div class="header-actions">
@@ -45,8 +45,14 @@
       </div>
     </header>
 
-    <!-- メインナビゲーションタブ -->
-    <nav class="main-nav">
+    <!-- アプリ切り替え (電力 / 燃料エネルギー) -->
+    <div class="app-switcher" id="appSwitcher">
+      <button class="app-switch-btn active" data-app="power">⚡ 電力</button>
+      <button class="app-switch-btn" data-app="fuel">🔥 燃料エネルギー</button>
+    </div>
+
+    <!-- メインナビゲーションタブ (電力) -->
+    <nav class="main-nav" id="powerNav">
       <button class="main-nav-btn active" data-view="annualView">📈 年間推移・品種別分析</button>
       <button class="main-nav-btn" data-view="annualEquipmentView">⚙️ 年間推移・設備別分析</button>
       <button class="main-nav-btn" data-view="monthlyView">📅 単月詳細集約 (日別・1時間)</button>
@@ -423,6 +429,161 @@
 
     </section>
 
+    <!-- =========================================================================
+         燃料エネルギー: 年間推移・品種別分析 (月別燃料エネルギー使用量集約グラフ表示 準拠)
+         ========================================================================= -->
+    <section id="fuelView" class="view-section" style="display: none;">
+
+      <!-- Excelドラッグ＆ドロップゾーン (電力の画面と同じファイルを共用) -->
+      <div id="fuelDropzone" class="dropzone-card">
+        <div class="dropzone-icon">📁</div>
+        <div class="dropzone-text">エネルギー計算表・月報PET (Excel) をドラッグ＆ドロップ</div>
+        <div class="dropzone-subtext">電力の画面と同じファイルを使います。どちらの画面から投入しても、両方に反映されます</div>
+        <input type="file" id="fuelFileInput" class="hidden-file-input" multiple accept=".xlsx,.xls">
+
+        <!-- 読込状況バッジ -->
+        <div class="file-badges-container">
+          <span id="fuelTagEnergy" class="tag-badge excel">かつらぎ計算表 (A重油・LNG)</span>
+          <span id="fuelTagPet" class="tag-badge excel">月報PET (品種別本数)</span>
+          <span id="fuelTagOperation" class="tag-badge excel">操業時間 (電力側のデータ)</span>
+        </div>
+      </div>
+
+      <!-- コントロールツールバー -->
+      <div class="toolbar-card">
+        <div class="toolbar-group">
+          <span class="toolbar-label">対象年度:</span>
+          <select id="fuelYearSelector" class="select-control">
+            <option value="">（データ未読込）</option>
+          </select>
+        </div>
+
+        <div class="toolbar-group">
+          <span class="toolbar-label">評価項目:</span>
+          <select id="fuelMetricSelector" class="select-control"></select>
+        </div>
+
+        <div class="toolbar-group" style="margin-left: auto;">
+          <span id="fuelDataStatus" style="font-size: 0.85rem; color: var(--text-muted);"></span>
+        </div>
+      </div>
+
+      <!-- 年間KPIサマリーカード -->
+      <div class="kpi-grid">
+        <div class="kpi-card" style="--card-color: #ea580c;">
+          <div class="kpi-label">年間燃料エネルギー</div>
+          <div class="kpi-value"><span id="fuelKpiTotalMj">---</span><span class="kpi-unit">MJ</span></div>
+          <div class="kpi-sub">A重油 + LNG の熱量</div>
+        </div>
+        <div class="kpi-card" style="--card-color: var(--primary);">
+          <div class="kpi-label">年間燃料コスト</div>
+          <div class="kpi-value"><span id="fuelKpiTotalCost">---</span><span class="kpi-unit">円</span></div>
+          <div class="kpi-sub">平均単価 <span id="fuelKpiUnitPrice">---</span> 円/MJ</div>
+        </div>
+        <div class="kpi-card" style="--card-color: var(--warning);">
+          <div class="kpi-label">年間総生産本数</div>
+          <div class="kpi-value"><span id="fuelKpiTotalBottles">---</span><span class="kpi-unit">本</span></div>
+          <div class="kpi-sub">月報PET 品種別充填本数の合計</div>
+        </div>
+        <div class="kpi-card" style="--card-color: #8b5cf6;">
+          <div class="kpi-label">年間平均原単位</div>
+          <div class="kpi-value"><span id="fuelKpiAvgIntensity">---</span><span class="kpi-unit">MJ/本</span></div>
+          <div class="kpi-sub">年間燃料エネルギー ÷ 総生産本数</div>
+        </div>
+      </div>
+
+      <!-- グラフを表示できない場合の案内 -->
+      <div id="fuelChartNote" class="fuel-note" style="display: none;"></div>
+
+      <!-- 年間グラフグリッド -->
+      <div class="chart-grid">
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title" id="fuelStackedChartTitle">📊 月別燃料エネルギー使用量集約グラフ (8品種積み上げ)</h2>
+            <span class="toolbar-label" id="fuelMetricLabel">燃料エネルギー (MJ)</span>
+          </div>
+          <div class="chart-container">
+            <canvas id="fuelStackedChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">📈 月別燃料エネルギー使用量推移 (品種別)</h2>
+          </div>
+          <div class="chart-container">
+            <canvas id="fuelTrendChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- 年間月別集計テーブル -->
+      <div class="table-card">
+        <div class="table-header-bar">
+          <h3 class="table-title">📋 年間月別実績集計表 (<span id="fuelTableMetricTitle">燃料エネルギー MJ</span>)</h3>
+          <span class="toolbar-label">月別燃料エネルギー使用量集約グラフ表示(2024).xlsx 準拠</span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>年月</th>
+                <th>累計</th>
+                <th>月計</th>
+                <th>2.0L</th>
+                <th>1.5L</th>
+                <th>1.0L</th>
+                <th>600ｍL丸</th>
+                <th>500ｍL丸</th>
+                <th>500ｍL角</th>
+                <th>350ｍL</th>
+                <th>280ｍL</th>
+              </tr>
+            </thead>
+            <tbody id="fuelTableBody">
+              <tr>
+                <td colspan="11" style="text-align:center; padding: 2rem; color: var(--text-muted);">
+                  エネルギー計算表と月報PETを読み込むと、年間月別実績集計表が表示されます
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 燃料別の内訳テーブル -->
+      <div class="table-card">
+        <div class="table-header-bar">
+          <h3 class="table-title">📋 燃料別の熱量・費用 (月別)</h3>
+          <span class="toolbar-label">エネルギー計算表の値。費用は購入した月に計上されます</span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>年月</th>
+                <th>A重油 熱量 (GJ)</th>
+                <th>LNG 熱量 (GJ)</th>
+                <th>熱量 計 (GJ)</th>
+                <th>A重油 費用 (千円)</th>
+                <th>LNG 費用 (千円)</th>
+                <th>費用 計 (千円)</th>
+                <th>燃料単価 (円/MJ)</th>
+              </tr>
+            </thead>
+            <tbody id="fuelBreakdownTableBody">
+              <tr>
+                <td colspan="8" style="text-align:center; padding: 2rem; color: var(--text-muted);">
+                  エネルギー計算表を読み込むと、燃料別の熱量・費用が表示されます
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
   </div>
 
   <!-- トーストコンテナ -->
@@ -587,7 +748,9 @@
         'js/services/categoryService.js',
         'js/services/kpiService.js',
         'js/services/annualService.js',
+        'js/services/fuelService.js',
         'js/components/charts.js',
+        'js/fuelView.js',
         'js/app.js'
       ];
       function loadNextScript(index) {

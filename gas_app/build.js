@@ -41,7 +41,9 @@ function build() {
     'js/services/categoryService.js',
     'js/services/kpiService.js',
     'js/services/annualService.js',
+    'js/services/fuelService.js',
     'js/components/charts.js',
+    'js/fuelView.js',
     'js/app.js'
   ];
 
