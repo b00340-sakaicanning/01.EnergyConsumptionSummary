@@ -17,7 +17,7 @@
    * 1時間集約データから工程別小計を算出する
    * @param {Array<Object>} hourlyRows 1時間ごとの行データ
    * @param {Object} monthlyColumnSums 各列の月間合計
-   * @returns {Object} { categoryHourlyRows, categoryDailyTotals, categoryMonthlyTotals }
+   * @returns {Object} { categoryDailyTotals, categoryMonthlyTotals, monthlyOperationTimes }
    */
   function aggregateCategories(hourlyRows, monthlyColumnSums = {}) {
     const categories = AppConfig.CATEGORIES; // [{ key, name, sheetName }]
@@ -63,10 +63,7 @@
           categories: initialSums,
           operationTimes: {
             waterTimeMin: 0,
-            actualFillingMin: 0,
-            cipMin: 0,
-            sipMin: 0,
-            otherMin: 0
+            actualFillingMin: 0
           }
         });
       }
@@ -79,9 +76,6 @@
       if (row.operationTimes) {
         dayObj.operationTimes.waterTimeMin += (row.operationTimes.waterTimeMin || 0);
         dayObj.operationTimes.actualFillingMin += (row.operationTimes.actualFillingMin || 0);
-        dayObj.operationTimes.cipMin += (row.operationTimes.cipMin || 0);
-        dayObj.operationTimes.sipMin += (row.operationTimes.sipMin || 0);
-        dayObj.operationTimes.otherMin += (row.operationTimes.otherMin || 0);
       }
     }
 
@@ -123,21 +117,14 @@
     // 月間稼働時間合計
     const monthlyOperationTimes = {
       waterTimeMin: 0,
-      actualFillingMin: 0,
-      cipMin: 0,
-      sipMin: 0,
-      otherMin: 0
+      actualFillingMin: 0
     };
     for (const d of categoryDailyTotals) {
       monthlyOperationTimes.waterTimeMin += d.operationTimes.waterTimeMin;
       monthlyOperationTimes.actualFillingMin += d.operationTimes.actualFillingMin;
-      monthlyOperationTimes.cipMin += d.operationTimes.cipMin;
-      monthlyOperationTimes.sipMin += d.operationTimes.sipMin;
-      monthlyOperationTimes.otherMin += d.operationTimes.otherMin;
     }
 
     return {
-      categoryHourlyRows,
       categoryDailyTotals,
       categoryMonthlyTotals,
       monthlyOperationTimes

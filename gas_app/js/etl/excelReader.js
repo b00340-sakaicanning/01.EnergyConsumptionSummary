@@ -8,11 +8,11 @@
   if (typeof module === 'object' && module.exports) {
     let XLSX;
     try { XLSX = require('xlsx'); } catch(e) {}
-    module.exports = factory(XLSX);
+    module.exports = factory(XLSX, require('../config.js'));
   } else {
-    root.ExcelReader = factory(root.XLSX);
+    root.ExcelReader = factory(root.XLSX, root.AppConfig);
   }
-}(typeof self !== 'undefined' ? self : this, function (XLSXLib) {
+}(typeof self !== 'undefined' ? self : this, function (XLSXLib, AppConfig) {
 
   /**
    * かつらぎ工場エネルギー計算表から特定年月の電気料金データを抽出する
@@ -29,7 +29,7 @@
     const wb = typeof workbookData.Sheets === 'object' ? workbookData : XLSX.read(workbookData, { type: 'array' });
     const targetMonth = parseInt(yearMonth.slice(4, 6), 10); // 1〜12
     const targetYear = parseInt(yearMonth.slice(0, 4), 10);
-    const nendo = targetMonth >= 4 ? targetYear : targetYear - 1; // 2024年度
+    const nendo = AppConfig.getFiscalYear(targetYear, targetMonth); // 2024年度
 
     let usedKwh = null;
     let costThousand = null;
@@ -101,7 +101,7 @@
     const wb = typeof workbookData.Sheets === 'object' ? workbookData : XLSX.read(workbookData, { type: 'array' });
     const targetMonth = parseInt(yearMonth.slice(4, 6), 10);
     const targetYear = parseInt(yearMonth.slice(0, 4), 10);
-    const nendo = targetMonth >= 4 ? targetYear : targetYear - 1;
+    const nendo = AppConfig.getFiscalYear(targetYear, targetMonth);
 
     const varieties = {};
     let totalBottles = 0;
@@ -141,8 +141,7 @@
       const data = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
 
       // パターンA: 12列横並びブロック帳票 (4月=Col B(1), 5月=Col N(13), 6月=Col Z(25) ...)
-      const order = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
-      const mIdx = order.indexOf(targetMonth);
+      const mIdx = AppConfig.FISCAL_MONTH_ORDER.indexOf(targetMonth);
       if (mIdx >= 0) {
         const baseCol = mIdx * 12 + 1; // 各月ブロック開始列 (B=1, N=13, Z=25...)
 
@@ -165,18 +164,8 @@
           }
         }
 
-        // 2. 品種合算マッピング設定の取得 (Config.gs / AppConfig 準拠)
-        const varietyMapping = (typeof AppConfig !== 'undefined' && AppConfig.VARIETY_MAPPING) ||
-          (typeof CONFIG !== 'undefined' && CONFIG.VARIETY_MAPPING) || {
-            '2.0L': ['2.0L', '2L'],
-            '1.5L': ['1.5L'],
-            '1.0L': ['1.0L長角', '1.0L正角', '1.0L', '1L'],
-            '600mL丸': ['600mL丸', '600ml丸'],
-            '500mL丸': ['500mL丸', '500ml丸', '550mL丸', '550ml丸'],
-            '500mL角': ['500mL角', '500ml角'],
-            '350mL': ['350mL', '350ml'],
-            '280mL': ['280mL', '280ml']
-          };
+        // 2. 品種合算マッピング設定の取得 (起動時にGAS側 Config.gs の値で上書きされるため、呼び出しの都度参照する)
+        const varietyMapping = AppConfig.VARIETY_MAPPING;
 
         let vSum = 0;
         let r = 10;
@@ -280,8 +269,7 @@
    */
   function getFiscalMonthColIndex(calendarMonth) {
     // 4月: 0, 5月: 1, ..., 12月: 8, 1月: 9, 2月: 10, 3月: 11 (オフセット調整用)
-    const order = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
-    const idx = order.indexOf(calendarMonth);
+    const idx = AppConfig.FISCAL_MONTH_ORDER.indexOf(calendarMonth);
     return idx >= 0 ? idx + 2 : 2; // ヘッダー列等を考慮して通常+2列目以降
   }
 

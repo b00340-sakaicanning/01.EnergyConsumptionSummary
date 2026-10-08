@@ -12,8 +12,8 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REF_XLSX = os.path.join(BASE_DIR, "reference", "2024年度3月度", "月別電力使用量集約(2025年3月).xlsx")
-GRAPH_XLSX = os.path.join(BASE_DIR, "reference", "月別電力使用量集約グラフ表示(総電力 2024).xlsx")
+REF_XLSX = os.path.join(BASE_DIR, "reference", "参考用データ", "2024年度3月度", "月別電力使用量集約(2025年3月).xlsx")
+GRAPH_XLSX = os.path.join(BASE_DIR, "reference", "参考用データ", "月別電力使用量集約グラフ表示(総電力 2024).xlsx")
 OUTPUT_JSON = os.path.join(BASE_DIR, "tests", "truth_202503.json")
 
 NS = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",

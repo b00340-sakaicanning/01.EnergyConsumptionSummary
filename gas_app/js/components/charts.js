@@ -6,11 +6,11 @@
 
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory();
+    module.exports = factory(require('../config.js'));
   } else {
-    root.ChartManager = factory();
+    root.ChartManager = factory(root.AppConfig);
   }
-}(typeof self !== 'undefined' ? self : this, function () {
+}(typeof self !== 'undefined' ? self : this, function (AppConfig) {
 
   // チャートインスタンス管理
   let dailyChartInstance = null;
@@ -21,17 +21,29 @@
   let annualEquipDoughnutChartInstance = null;
 
   // 品種カラーパレット (Excel原紙・月別電力使用量集約グラフ表示(総電力 2024).xlsx 準拠)
-  const VARIETY_COLORS = {
-    '2.0L': { bg: 'rgba(37, 99, 235, 0.85)', border: '#2563eb' },
-    '1.5L': { bg: 'rgba(8, 145, 178, 0.85)', border: '#0891b2' },
-    '1.0L': { bg: 'rgba(5, 150, 105, 0.85)', border: '#059669' },
-    '600mL丸': { bg: 'rgba(101, 163, 13, 0.85)', border: '#65a30d' },
-    '500mL丸': { bg: 'rgba(217, 119, 6, 0.85)', border: '#d97706' },
-    '500mL角': { bg: 'rgba(234, 88, 12, 0.85)', border: '#ea580c' },
-    '350mL': { bg: 'rgba(124, 58, 237, 0.85)', border: '#7c3aed' },
-    '280mL': { bg: 'rgba(219, 39, 119, 0.85)', border: '#db2777' },
-    '月計': { bg: 'rgba(15, 23, 42, 0.9)', border: '#0f172a' }
-  };
+  // 色そのものは AppConfig.VARIETY_GROUPS[].color で定義し、塗りはその 85% 不透明色とする
+  const VARIETY_COLORS = {};
+  AppConfig.VARIETY_GROUPS.forEach(g => {
+    VARIETY_COLORS[g.key] = { bg: hexToRgba(g.color, 0.85), border: g.color };
+  });
+
+  // 工程大分類5種 (color: ドーナツ内側リング・設備詳細の棒、stackColor: 工程別積み上げ棒)
+  const MAIN_PROCESSES = [
+    { name: 'ユーティリティ', color: '#0284c7', stackColor: 'rgba(14, 165, 233, 0.8)' },
+    { name: '調合抽出', color: '#7c3aed', stackColor: 'rgba(124, 58, 237, 0.8)' },
+    { name: '供給', color: '#f59e0b', stackColor: 'rgba(245, 158, 11, 0.8)' },
+    { name: '充填', color: '#059669', stackColor: 'rgba(5, 150, 105, 0.8)' },
+    { name: '包装', color: '#ea580c', stackColor: 'rgba(234, 88, 12, 0.8)' }
+  ];
+
+  // ユーティリティ内訳5種 (ドーナツ外側リング・設備詳細の棒)
+  const UTILITY_BREAKDOWN = [
+    { name: 'コンプレッサー', color: '#38bdf8' },
+    { name: 'ボイラー', color: '#0284c7' },
+    { name: '純水装置', color: '#0ea5e9' },
+    { name: '排水処理', color: '#64748b' },
+    { name: 'チラー', color: '#0891b2' }
+  ];
 
   const GRID_COLOR = 'rgba(226, 232, 240, 0.8)';
   const TEXT_COLOR = '#64748b';
@@ -59,6 +71,42 @@
     return parseFloat((niceFraction * Math.pow(10, exponent)).toPrecision(4));
   }
 
+  // getAxisMaxForPeak の切り上げ候補 (仮数)。getNiceMax より細かく刻み、狙った高さからのずれを小さくする (隣り合う候補の比は最大1.25)
+  // Chart.js の目盛り間隔 (1・2・5系で最大10区間) で割り切れる値だけを並べている。それ以外を入れると最上段の目盛りだけ間隔が詰まる
+  const FINE_NICE_STEPS = [1, 1.2, 1.4, 1.6, 1.8, 2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7, 8, 9, 10];
+
+  /**
+   * データの最大値が軸の高さの指定割合に来るような、キリの良い軸上限を算出する
+   * @param {number} peakValue データの最大値
+   * @param {number} peakRatio 最大値を置く高さ (0〜1。例: 0.6 なら軸の60%の位置)
+   * @returns {number|undefined} 軸上限 (算出できない場合は undefined)
+   */
+  function getAxisMaxForPeak(peakValue, peakRatio) {
+    if (!peakValue || peakValue <= 0 || !isFinite(peakValue)) return undefined;
+    const ratio = peakRatio > 0 && peakRatio <= 1 ? peakRatio : 1;
+    const target = peakValue / ratio;
+    const exponent = Math.floor(Math.log10(target));
+    const fraction = target / Math.pow(10, exponent);
+    // 浮動小数点の誤差で、ちょうど候補に乗る値が1段上へ切り上がらないようにする
+    const niceFraction = FINE_NICE_STEPS.find(step => step >= fraction - 1e-9) || 10;
+    return parseFloat((niceFraction * Math.pow(10, exponent)).toPrecision(4));
+  }
+
+  /**
+   * '#rrggbb' を 'rgba(r, g, b, alpha)' に変換する
+   */
+  function hexToRgba(hex, alpha) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+  }
+
+  /**
+   * 積み上げ棒グラフの系列定義を生成する
+   */
+  function buildStackedBar(label, data, backgroundColor, stack) {
+    return { type: 'bar', label, data, backgroundColor, borderRadius: 2, stack, order: 1 };
+  }
+
   /**
    * 【年間】月別電力使用量集約グラフ (8品種積み上げバー ＋ 月計折れ線)
    * @param {string} canvasId 
@@ -77,10 +125,10 @@
       annualStackedChartInstance.destroy();
     }
 
-    const varietyKeys = ['2.0L', '1.5L', '1.0L', '600mL丸', '500mL丸', '500mL角', '350mL', '280mL'];
+    const varietyKeys = AppConfig.VARIETY_KEYS;
 
     // 原単位・平均系指標かどうかの判定 (単位本、単位時間)
-    const isRateMetric = ['kwhPerBottle', 'costPerBottle', 'kwhPerMinute', 'costPerMinute'].includes(metricInfo.key);
+    const isRateMetric = AppConfig.RATE_METRIC_KEYS.includes(metricInfo.key);
 
     // 1. 各品種のバーデータセット
     const datasets = varietyKeys.map(vk => {
@@ -288,7 +336,7 @@
       annualTrendChartInstance.destroy();
     }
 
-    const varietyKeys = ['2.0L', '1.5L', '1.0L', '600mL丸', '500mL丸', '500mL角', '350mL', '280mL'];
+    const varietyKeys = AppConfig.VARIETY_KEYS;
 
     const datasets = varietyKeys.map(vk => {
       const color = VARIETY_COLORS[vk] || { bg: '#94a3b8', border: '#64748b' };
@@ -311,7 +359,9 @@
       };
     });
 
-    const trendMax = scaleOptions && scaleOptions.trendMax > 0 ? scaleOptions.trendMax : (scaleOptions && scaleOptions.max > 0 ? scaleOptions.max : undefined);
+    // 品種単体の値を描くため、専用の上限 (trendMax) を優先する。無ければ集約グラフと同じ上限を使う
+    const trendMax = scaleOptions && scaleOptions.trendMax > 0 ? scaleOptions.trendMax
+      : (scaleOptions && scaleOptions.max > 0 ? scaleOptions.max : undefined);
 
     annualTrendChartInstance = new Chart(ctx, {
       type: 'line',
@@ -372,11 +422,6 @@
 
     const labels = dailyTotals.map(d => `${d.day}日`);
     const totalData = dailyTotals.map(d => d.categories['総電力'] || 0);
-    const utilityData = dailyTotals.map(d => d.categories['ユーティリティ'] || 0);
-    const mixingData = dailyTotals.map(d => d.categories['調合抽出'] || 0);
-    const supplyData = dailyTotals.map(d => d.categories['供給'] || 0);
-    const fillingData = dailyTotals.map(d => d.categories['充填'] || 0);
-    const packagingData = dailyTotals.map(d => d.categories['包装'] || 0);
 
     const dailyMax = scaleOptions && scaleOptions.max > 0 ? scaleOptions.max : undefined;
 
@@ -397,51 +442,13 @@
             tension: 0,
             order: 0
           },
-          {
-            type: 'bar',
-            label: 'ユーティリティ (kWh)',
-            data: utilityData,
-            backgroundColor: 'rgba(14, 165, 233, 0.8)',
-            borderRadius: 2,
-            stack: 'dailyStack',
-            order: 1
-          },
-          {
-            type: 'bar',
-            label: '調合抽出 (kWh)',
-            data: mixingData,
-            backgroundColor: 'rgba(124, 58, 237, 0.8)',
-            borderRadius: 2,
-            stack: 'dailyStack',
-            order: 1
-          },
-          {
-            type: 'bar',
-            label: '供給 (kWh)',
-            data: supplyData,
-            backgroundColor: 'rgba(245, 158, 11, 0.8)',
-            borderRadius: 2,
-            stack: 'dailyStack',
-            order: 1
-          },
-          {
-            type: 'bar',
-            label: '充填 (kWh)',
-            data: fillingData,
-            backgroundColor: 'rgba(5, 150, 105, 0.8)',
-            borderRadius: 2,
-            stack: 'dailyStack',
-            order: 1
-          },
-          {
-            type: 'bar',
-            label: '包装 (kWh)',
-            data: packagingData,
-            backgroundColor: 'rgba(234, 88, 12, 0.8)',
-            borderRadius: 2,
-            stack: 'dailyStack',
-            order: 1
-          }
+          // 工程大分類5種の積み上げ棒
+          ...MAIN_PROCESSES.map(p => buildStackedBar(
+            `${p.name} (kWh)`,
+            dailyTotals.map(d => d.categories[p.name] || 0),
+            p.stackColor,
+            'dailyStack'
+          ))
         ]
       },
       options: {
@@ -485,51 +492,30 @@
   }
 
   /**
-   * 【単月】工程別電力比率多層ドーナツチャート (ユーティリティ外側円弧内訳付き)
+   * 工程別電力比率の多層ドーナツチャート設定を生成する
+   * 内側リング: 工程大分類5種、外側リング: ユーティリティ内訳5種 (他工程の分は透明スペーサー)
+   * @param {Function} getValue カテゴリ名から電力量 (kWh) を返す関数
+   * @param {string} breakdownTooltipLabel 外側リングのツールチップ見出し
    */
-  function renderCategoryDoughnutChart(canvasId, categoryTotals) {
-    if (typeof Chart === 'undefined') return;
-    const ctx = document.getElementById(canvasId);
-    if (!ctx) return;
-
-    if (categoryChartInstance) categoryChartInstance.destroy();
-    if (!categoryTotals || typeof categoryTotals !== 'object') return;
-
+  function buildProcessDoughnutConfig(getValue, breakdownTooltipLabel) {
     // 1. 内側メイン工程 (ユーティリティ、調合抽出、供給、充填、包装)
-    const mainKeys = ['ユーティリティ', '調合抽出', '供給', '充填', '包装'];
-    const mainColors = ['#0284c7', '#7c3aed', '#f59e0b', '#059669', '#ea580c'];
-    const mainData = mainKeys.map(k => (categoryTotals[k] ? categoryTotals[k].grandTotal : 0));
+    const mainKeys = MAIN_PROCESSES.map(p => p.name);
+    const mainColors = MAIN_PROCESSES.map(p => p.color);
+    const mainData = mainKeys.map(getValue);
     const mainTotalSum = mainData.reduce((a, b) => a + b, 0);
 
     // 2. 外側ユーティリティ内訳 (コンプレッサー、ボイラー、純水装置、排水処理、チラー) + 他工程透明スペーサー
-    const uBreakdownKeys = ['コンプレッサー', 'ボイラー', '純水装置', '排水処理', 'チラー'];
-    const uBreakdownColors = ['#38bdf8', '#0284c7', '#0ea5e9', '#64748b', '#0891b2'];
-    const uBreakdownData = uBreakdownKeys.map(k => (categoryTotals[k] ? categoryTotals[k].grandTotal : 0));
-    const uTotal = categoryTotals['ユーティリティ'] ? categoryTotals['ユーティリティ'].grandTotal : 0;
+    const uBreakdownKeys = UTILITY_BREAKDOWN.map(p => p.name);
+    const uBreakdownColors = UTILITY_BREAKDOWN.map(p => p.color);
+    const uTotal = getValue('ユーティリティ');
+    const otherProcessKeys = mainKeys.filter(k => k !== 'ユーティリティ');
 
     // 外側リングの全データ: ユーティリティ内訳5項目 + 残り4工程分(透明)
-    const outerData = [
-      ...uBreakdownData,
-      categoryTotals['調合抽出'] ? categoryTotals['調合抽出'].grandTotal : 0,
-      categoryTotals['供給'] ? categoryTotals['供給'].grandTotal : 0,
-      categoryTotals['充填'] ? categoryTotals['充填'].grandTotal : 0,
-      categoryTotals['包装'] ? categoryTotals['包装'].grandTotal : 0
-    ];
+    const outerData = [...uBreakdownKeys.map(getValue), ...otherProcessKeys.map(getValue)];
+    const outerColors = [...uBreakdownColors, ...otherProcessKeys.map(() => 'transparent')];
+    const outerBorderColors = [...uBreakdownKeys.map(() => '#ffffff'), ...otherProcessKeys.map(() => 'transparent')];
 
-    const outerColors = [
-      ...uBreakdownColors,
-      'transparent',
-      'transparent',
-      'transparent',
-      'transparent'
-    ];
-
-    const outerBorderColors = [
-      '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff',
-      'transparent', 'transparent', 'transparent', 'transparent'
-    ];
-
-    categoryChartInstance = new Chart(ctx, {
+    return {
       type: 'doughnut',
       data: {
         datasets: [
@@ -565,7 +551,6 @@
               generateLabels: function() {
                 // メイン工程5件 + ユーティリティ内訳5件の凡例
                 const labels = [];
-                // メイン
                 mainKeys.forEach((name, i) => {
                   labels.push({
                     text: `${name}`,
@@ -576,7 +561,6 @@
                     index: i
                   });
                 });
-                // 内訳
                 uBreakdownKeys.forEach((name, i) => {
                   labels.push({
                     text: ` └ ${name}`,
@@ -603,7 +587,7 @@
                     const name = uBreakdownKeys[dataIndex];
                     const val = context.raw || 0;
                     const pct = uTotal > 0 ? ((val / uTotal) * 100).toFixed(1) : '0';
-                    return ` [ユーティリティ内訳] ${name}: ${Math.round(val).toLocaleString()} kWh (${pct}%)`;
+                    return ` [${breakdownTooltipLabel}] ${name}: ${Math.round(val).toLocaleString()} kWh (${pct}%)`;
                   }
                   return null; // 透明部分はツールチップ非表示
                 } else {
@@ -619,7 +603,24 @@
         },
         cutout: '58%'
       }
-    });
+    };
+  }
+
+  /**
+   * 【単月】工程別電力比率多層ドーナツチャート (ユーティリティ外側円弧内訳付き)
+   */
+  function renderCategoryDoughnutChart(canvasId, categoryTotals) {
+    if (typeof Chart === 'undefined') return;
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+
+    if (categoryChartInstance) categoryChartInstance.destroy();
+    if (!categoryTotals || typeof categoryTotals !== 'object') return;
+
+    categoryChartInstance = new Chart(ctx, buildProcessDoughnutConfig(
+      name => (categoryTotals[name] ? categoryTotals[name].grandTotal : 0),
+      'ユーティリティ内訳'
+    ));
   }
 
   /**
@@ -632,7 +633,7 @@
 
     if (annualEquipTrendChartInstance) annualEquipTrendChartInstance.destroy();
 
-    const monthLabels = ['4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月', '1月', '2月', '3月'];
+    const monthLabels = AppConfig.FISCAL_MONTH_LABELS.slice();
     const cats = equipmentSummary.categories || {};
     const totalData = cats['総電力'] ? cats['総電力'].monthly : [];
 
@@ -652,140 +653,15 @@
       order: 0
     });
 
+    const monthlyOf = name => (cats[name] ? cats[name].monthly : []);
+
     if (viewMode === 'utilityGroup') {
-      // ユーティリティ統合モード
-      datasets.push(
-        {
-          type: 'bar',
-          label: 'ユーティリティ (kWh)',
-          data: cats['ユーティリティ'] ? cats['ユーティリティ'].monthly : [],
-          backgroundColor: 'rgba(14, 165, 233, 0.8)',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '調合抽出 (kWh)',
-          data: cats['調合抽出'] ? cats['調合抽出'].monthly : [],
-          backgroundColor: 'rgba(124, 58, 237, 0.8)',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '供給 (kWh)',
-          data: cats['供給'] ? cats['供給'].monthly : [],
-          backgroundColor: 'rgba(245, 158, 11, 0.8)',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '充填 (kWh)',
-          data: cats['充填'] ? cats['充填'].monthly : [],
-          backgroundColor: 'rgba(5, 150, 105, 0.8)',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '包装 (kWh)',
-          data: cats['包装'] ? cats['包装'].monthly : [],
-          backgroundColor: 'rgba(234, 88, 12, 0.8)',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        }
-      );
+      // ユーティリティ統合モード (工程大分類5種)
+      datasets.push(...MAIN_PROCESSES.map(p => buildStackedBar(`${p.name} (kWh)`, monthlyOf(p.name), p.stackColor, 'equipStack')));
     } else {
-      // 設備詳細内訳モード
-      datasets.push(
-        {
-          type: 'bar',
-          label: 'コンプレッサー',
-          data: cats['コンプレッサー'] ? cats['コンプレッサー'].monthly : [],
-          backgroundColor: '#38bdf8',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: 'ボイラー',
-          data: cats['ボイラー'] ? cats['ボイラー'].monthly : [],
-          backgroundColor: '#0284c7',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '純水装置',
-          data: cats['純水装置'] ? cats['純水装置'].monthly : [],
-          backgroundColor: '#0ea5e9',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '排水処理',
-          data: cats['排水処理'] ? cats['排水処理'].monthly : [],
-          backgroundColor: '#64748b',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: 'チラー',
-          data: cats['チラー'] ? cats['チラー'].monthly : [],
-          backgroundColor: '#0891b2',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '調合抽出',
-          data: cats['調合抽出'] ? cats['調合抽出'].monthly : [],
-          backgroundColor: '#7c3aed',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '供給',
-          data: cats['供給'] ? cats['供給'].monthly : [],
-          backgroundColor: '#f59e0b',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '充填',
-          data: cats['充填'] ? cats['充填'].monthly : [],
-          backgroundColor: '#059669',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '包装',
-          data: cats['包装'] ? cats['包装'].monthly : [],
-          backgroundColor: '#ea580c',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        }
-      );
+      // 設備詳細内訳モード (ユーティリティ内訳5種 + ユーティリティ以外の工程4種)
+      const detailSeries = [...UTILITY_BREAKDOWN, ...MAIN_PROCESSES.filter(p => p.name !== 'ユーティリティ')];
+      datasets.push(...detailSeries.map(p => buildStackedBar(p.name, monthlyOf(p.name), p.color, 'equipStack')));
     }
 
     annualEquipTrendChartInstance = new Chart(ctx, {
@@ -844,120 +720,10 @@
     if (annualEquipDoughnutChartInstance) annualEquipDoughnutChartInstance.destroy();
 
     const cats = equipmentSummary.categories || {};
-
-    // 1. 内側メイン工程 (ユーティリティ、調合抽出、供給、充填、包装)
-    const mainKeys = ['ユーティリティ', '調合抽出', '供給', '充填', '包装'];
-    const mainColors = ['#0284c7', '#7c3aed', '#f59e0b', '#059669', '#ea580c'];
-    const mainData = mainKeys.map(k => (cats[k] ? cats[k].annualTotal : 0));
-    const mainTotalSum = mainData.reduce((a, b) => a + b, 0);
-
-    // 2. 外側ユーティリティ内訳 (コンプレッサー、ボイラー、純水装置、排水処理、チラー) + 他工程透明
-    const uBreakdownKeys = ['コンプレッサー', 'ボイラー', '純水装置', '排水処理', 'チラー'];
-    const uBreakdownColors = ['#38bdf8', '#0284c7', '#0ea5e9', '#64748b', '#0891b2'];
-    const uBreakdownData = uBreakdownKeys.map(k => (cats[k] ? cats[k].annualTotal : 0));
-    const uTotal = cats['ユーティリティ'] ? cats['ユーティリティ'].annualTotal : 0;
-
-    const outerData = [
-      ...uBreakdownData,
-      cats['調合抽出'] ? cats['調合抽出'].annualTotal : 0,
-      cats['供給'] ? cats['供給'].annualTotal : 0,
-      cats['充填'] ? cats['充填'].annualTotal : 0,
-      cats['包装'] ? cats['包装'].annualTotal : 0
-    ];
-
-    const outerColors = [
-      ...uBreakdownColors,
-      'transparent', 'transparent', 'transparent', 'transparent'
-    ];
-
-    const outerBorderColors = [
-      '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff',
-      'transparent', 'transparent', 'transparent', 'transparent'
-    ];
-
-    annualEquipDoughnutChartInstance = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        datasets: [
-          {
-            label: 'ユーティリティ内訳',
-            data: outerData,
-            backgroundColor: outerColors,
-            borderColor: outerBorderColors,
-            borderWidth: 2,
-            weight: 0.9
-          },
-          {
-            label: '工程大分類',
-            data: mainData,
-            backgroundColor: mainColors,
-            borderColor: '#ffffff',
-            borderWidth: 2,
-            weight: 1.2
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: 'right',
-            labels: {
-              color: '#334155',
-              font: { weight: '600', size: 11 },
-              generateLabels: function() {
-                const labels = [];
-                mainKeys.forEach((name, i) => {
-                  labels.push({
-                    text: `${name}`,
-                    fillStyle: mainColors[i],
-                    strokeStyle: mainColors[i],
-                    lineWidth: 1,
-                    hidden: false,
-                    index: i
-                  });
-                });
-                uBreakdownKeys.forEach((name, i) => {
-                  labels.push({
-                    text: ` └ ${name}`,
-                    fillStyle: uBreakdownColors[i],
-                    strokeStyle: uBreakdownColors[i],
-                    lineWidth: 1,
-                    hidden: false,
-                    index: 10 + i
-                  });
-                });
-                return labels;
-              }
-            }
-          },
-          tooltip: {
-            callbacks: {
-              label: function(context) {
-                const dsIndex = context.datasetIndex;
-                const dataIndex = context.dataIndex;
-                if (dsIndex === 0) {
-                  if (dataIndex < uBreakdownKeys.length) {
-                    const name = uBreakdownKeys[dataIndex];
-                    const val = context.raw || 0;
-                    const pct = uTotal > 0 ? ((val / uTotal) * 100).toFixed(1) : '0';
-                    return ` [年間内訳] ${name}: ${Math.round(val).toLocaleString()} kWh (${pct}%)`;
-                  }
-                  return null;
-                } else {
-                  const name = mainKeys[dataIndex];
-                  const val = context.raw || 0;
-                  const pct = mainTotalSum > 0 ? ((val / mainTotalSum) * 100).toFixed(1) : '0';
-                  return ` ${name}: ${Math.round(val).toLocaleString()} kWh (${pct}%)`;
-                }
-              }
-            }
-          }
-        },
-        cutout: '58%'
-      }
-    });
+    annualEquipDoughnutChartInstance = new Chart(ctx, buildProcessDoughnutConfig(
+      name => (cats[name] ? cats[name].annualTotal : 0),
+      '年間内訳'
+    ));
   }
 
   return {
@@ -967,7 +733,8 @@
     renderAnnualTrendChart,
     renderAnnualEquipmentTrendChart,
     renderAnnualEquipmentDoughnutChart,
-    getNiceMax
+    getNiceMax,
+    getAxisMaxForPeak
   };
 
 }));

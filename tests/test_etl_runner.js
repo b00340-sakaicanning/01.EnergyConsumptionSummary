@@ -1,6 +1,6 @@
 /**
  * tests/test_etl_runner.js
- * 実際の2025年3月度生データ(reference/2024年度3月度/202503/)を読み込み、
+ * 実際の2025年3月度生データ(reference/読込用データ/CSVデータ/2024年度/202503/)を読み込み、
  * csvParser と hourlyAggregator を実行して出力を検証するテストスクリプト。
  */
 
@@ -10,32 +10,29 @@ const CsvParser = require('../gas_app/js/etl/csvParser.js');
 const HourlyAggregator = require('../gas_app/js/etl/hourlyAggregator.js');
 
 const BASE_DIR = path.resolve(__dirname, '..');
-const INPUT_DIR = path.join(BASE_DIR, 'reference', '2024年度3月度', '202503');
+const INPUT_DIR = path.join(BASE_DIR, 'reference', '読込用データ', 'CSVデータ', '2024年度', '202503');
 const OUTPUT_TEST_JSON = path.join(BASE_DIR, 'tests', 'test_output_202503.json');
 
 console.log('=== Running ETL Runner Test ===');
 console.log(`Input Directory: ${INPUT_DIR}`);
 
-// 1. tag02, 04, 05, 06, 07 のテキストファイルを読み込み
-const targetFiles = [
-  '202503_tag02.txt',
-  '202503_tag04.txt',
-  '202503_tag05.txt',
-  '202503_tag06.txt',
-  '202503_tag07.txt'
-];
+// 1. 日別ロガーファイル (AQyyyymmdd_00N.TXT / tag02, 04, 05, 06, 07) を読み込み
+const targetFiles = fs.existsSync(INPUT_DIR)
+  ? fs.readdirSync(INPUT_DIR).filter(fname => /^AQ\d{8}_\d{3}\.TXT$/i.test(fname)).sort()
+  : [];
+
+// 入力が無い状態で実行すると全ゼロの出力で上書きしてしまうため、ここで中断する
+if (targetFiles.length === 0) {
+  console.error(`Error: 入力ファイルが見つかりません: ${INPUT_DIR}`);
+  process.exit(1);
+}
 
 const loadedFiles = [];
 for (const fname of targetFiles) {
-  const fpath = path.join(INPUT_DIR, fname);
-  if (fs.existsSync(fpath)) {
-    console.log(`Loading: ${fname} (${(fs.statSync(fpath).size / 1024 / 1024).toFixed(2)} MB)...`);
-    const content = fs.readFileSync(fpath, 'utf8');
-    loadedFiles.push({ fileName: fname, content });
-  } else {
-    console.warn(`Warning: File not found: ${fpath}`);
-  }
+  const content = fs.readFileSync(path.join(INPUT_DIR, fname), 'utf8');
+  loadedFiles.push({ fileName: fname, content });
 }
+console.log(`Loaded ${loadedFiles.length} files.`);
 
 console.log(`\nParsing and Merging ${loadedFiles.length} files...`);
 const startTime = Date.now();

@@ -44,6 +44,9 @@
     { key: '280mL', name: '280ｍL', capacityL: 0.28, bpm: 500, codes: [110], color: '#db2777' }
   ];
 
+  // 品種8大分類キー (表示・集計の並び順)
+  const VARIETY_KEYS = VARIETY_GROUPS.map(g => g.key);
+
   /**
    * 品種合算マッピング設定
    * 8大分類キーに対して、月報Excel（月報PET）内のどの品種を紐付けて合算するかを定義
@@ -71,12 +74,19 @@
     { key: 'costPerMinute', name: '単位時間コスト', unit: '円/分', digits: 2 }
   ];
 
-  // 操業評価モード
-  const OPERATION_MODES = [
-    { key: 'combined', name: '水運転＋実充填', stepCodes: [20, 30] },
-    { key: 'waterOnly', name: '水運転のみ', stepCodes: [20] },
-    { key: 'fillingOnly', name: '実充填のみ', stepCodes: [30] }
-  ];
+  // 原単位・平均系の指標 (単位本、単位時間)。総量系と違い、積み上げ・累計の対象にならない
+  const RATE_METRIC_KEYS = ['kwhPerBottle', 'costPerBottle', 'kwhPerMinute', 'costPerMinute'];
+
+  // 年度 (4月〜翌3月) の月の並び
+  const FISCAL_MONTH_ORDER = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
+  const FISCAL_MONTH_LABELS = FISCAL_MONTH_ORDER.map(m => `${m}月`);
+
+  /**
+   * 暦年・月から年度を求める (4月〜12月: 当年、1月〜3月: 前年)
+   */
+  function getFiscalYear(year, month) {
+    return month >= 4 ? year : year - 1;
+  }
 
   // ステップマスター (工程分類) - 原紙Excel「ステップ」シート準拠 (全57件)
   const STEP_MASTER = {
@@ -180,107 +190,113 @@
   // tag: タグ種別, kwIndex: 各タグ内のkW列出現順序(0始まり), fixedVal: 固定値(未計測盤)
   const EQUIPMENT_COLUMNS = [
     // tag04 (コンプレッサー No1〜No3)
-    { col: 'D', tag: 'tag04', kwIndex: 0, label: 'コンプレッサー No1', category: 'total' },
-    { col: 'E', tag: 'tag04', kwIndex: 1, label: 'コンプレッサー No2', category: 'total' },
-    { col: 'F', tag: 'tag04', kwIndex: 2, label: 'コンプレッサー No3', category: 'total' },
+    { col: 'D', tag: 'tag04', kwIndex: 0, label: 'コンプレッサー No1' },
+    { col: 'E', tag: 'tag04', kwIndex: 1, label: 'コンプレッサー No2' },
+    { col: 'F', tag: 'tag04', kwIndex: 2, label: 'コンプレッサー No3' },
 
     // tag05 (1021-1109)
-    { col: 'G', tag: 'tag05', kwIndex: 0, label: '1F 低圧動力盤 №1 AMPAC', category: 'total' },
-    { col: 'H', tag: 'tag05', kwIndex: 1, label: '1F 低圧動力盤 №2 ｺﾝﾌﾟﾚｯｻｰ制御盤', category: 'total' },
-    { col: 'I', tag: 'tag05', kwIndex: 2, label: '井水純水制御盤', category: 'total' },
-    { col: 'J', tag: 'tag05', kwIndex: 3, label: '排水処理制御盤', category: 'total' },
-    { col: 'K', tag: 'tag05', kwIndex: 4, label: 'ﾎﾞｲﾗｰ制御盤', category: 'total' },
-    { col: 'L', tag: 'tag05', kwIndex: 5, label: 'ｶｯﾌﾟ殺菌制御盤', category: 'total' },
-    { col: 'M', tag: null, fixedVal: 0.0, label: '消火ﾎﾟﾝﾌﾟ盤', category: 'total' },
-    { col: 'N', tag: 'tag05', kwIndex: 6, label: '排水処理棟 原水ﾎﾟﾝﾌﾟ1号', category: 'total' },
-    { col: 'O', tag: 'tag05', kwIndex: 7, label: '排水処理棟 原水ﾎﾟﾝﾌﾟ2号', category: 'total' },
-    { col: 'P', tag: 'tag05', kwIndex: 8, label: '排水処理棟 調整ﾎﾟﾝﾌﾟ1号', category: 'total' },
-    { col: 'Q', tag: 'tag05', kwIndex: 9, label: '排水処理棟 調整ﾎﾟﾝﾌﾟ2号', category: 'total' },
-    { col: 'R', tag: 'tag05', kwIndex: 10, label: '排水処理棟 暖気ﾌﾞﾛｱ1号', category: 'total' },
-    { col: 'S', tag: 'tag05', kwIndex: 11, label: '排水処理棟 暖気ﾌﾞﾛｱ2号', category: 'total' },
-    { col: 'T', tag: 'tag05', kwIndex: 12, label: '排水処理棟 流量調整槽ﾌﾞﾛｱ', category: 'total' },
-    { col: 'U', tag: 'tag05', kwIndex: 13, label: '排水処理棟 沈殿槽分配ﾎﾟﾝﾌﾟ1号', category: 'total' },
-    { col: 'V', tag: 'tag05', kwIndex: 14, label: '排水処理棟 沈殿槽分配ﾎﾟﾝﾌﾟ2号', category: 'total' },
-    { col: 'W', tag: 'tag05', kwIndex: 15, label: '純水装置1号盤 井戸ﾎﾟﾝﾌﾟA', category: 'total' },
-    { col: 'X', tag: 'tag05', kwIndex: 16, label: '純水装置1号盤 井戸ﾎﾟﾝﾌﾟB', category: 'total' },
-    { col: 'Y', tag: 'tag05', kwIndex: 17, label: '純水装置1号盤 ろ過原水ﾎﾟﾝﾌﾟ', category: 'total' },
-    { col: 'Z', tag: 'tag05', kwIndex: 18, label: '純水装置1号盤 中継ﾎﾟﾝﾌﾟ', category: 'total' },
-    { col: 'AA', tag: 'tag05', kwIndex: 19, label: '純水装置1号盤 原水送水ﾎﾟﾝﾌﾟ', category: 'total' },
-    { col: 'AB', tag: 'tag05', kwIndex: 20, label: '純水装置1号盤 純水送水ﾎﾟﾝﾌﾟ', category: 'total' },
-    { col: 'AC', tag: 'tag05', kwIndex: 21, label: '純水装置1号盤 上水低圧ﾎﾟﾝﾌﾟ', category: 'total' },
-    { col: 'AD', tag: 'tag05', kwIndex: 22, label: '純水装置1号盤 ﾊﾟｽﾄﾗﾎﾟﾝﾌﾟ', category: 'total' },
-    { col: 'AE', tag: 'tag05', kwIndex: 23, label: '純水装置1号盤 駆動水ﾎﾟﾝﾌﾟ', category: 'total' },
-    { col: 'AF', tag: 'tag05', kwIndex: 24, label: '純水装置1号盤 UV殺菌器', category: 'total' },
-    { col: 'AG', tag: 'tag05', kwIndex: 25, label: '純水装置2号盤 2号中継ﾎﾟﾝﾌﾟゴウ', category: 'total' },
-    { col: 'AH', tag: 'tag05', kwIndex: 26, label: '純水装置2号盤 2号ろ過原水ﾎﾟﾝﾌﾟ', category: 'total' },
-    { col: 'AI', tag: 'tag05', kwIndex: 27, label: '純水装置2号盤 2号駆動水ﾎﾟﾝﾌﾟ', category: 'total' },
+    { col: 'G', tag: 'tag05', kwIndex: 0, label: '1F 低圧動力盤 №1 AMPAC' },
+    { col: 'H', tag: 'tag05', kwIndex: 1, label: '1F 低圧動力盤 №2 ｺﾝﾌﾟﾚｯｻｰ制御盤' },
+    { col: 'I', tag: 'tag05', kwIndex: 2, label: '井水純水制御盤' },
+    { col: 'J', tag: 'tag05', kwIndex: 3, label: '排水処理制御盤' },
+    { col: 'K', tag: 'tag05', kwIndex: 4, label: 'ﾎﾞｲﾗｰ制御盤' },
+    { col: 'L', tag: 'tag05', kwIndex: 5, label: 'ｶｯﾌﾟ殺菌制御盤' },
+    { col: 'M', tag: null, fixedVal: 0.0, label: '消火ﾎﾟﾝﾌﾟ盤' },
+    { col: 'N', tag: 'tag05', kwIndex: 6, label: '排水処理棟 原水ﾎﾟﾝﾌﾟ1号' },
+    { col: 'O', tag: 'tag05', kwIndex: 7, label: '排水処理棟 原水ﾎﾟﾝﾌﾟ2号' },
+    { col: 'P', tag: 'tag05', kwIndex: 8, label: '排水処理棟 調整ﾎﾟﾝﾌﾟ1号' },
+    { col: 'Q', tag: 'tag05', kwIndex: 9, label: '排水処理棟 調整ﾎﾟﾝﾌﾟ2号' },
+    { col: 'R', tag: 'tag05', kwIndex: 10, label: '排水処理棟 暖気ﾌﾞﾛｱ1号' },
+    { col: 'S', tag: 'tag05', kwIndex: 11, label: '排水処理棟 暖気ﾌﾞﾛｱ2号' },
+    { col: 'T', tag: 'tag05', kwIndex: 12, label: '排水処理棟 流量調整槽ﾌﾞﾛｱ' },
+    { col: 'U', tag: 'tag05', kwIndex: 13, label: '排水処理棟 沈殿槽分配ﾎﾟﾝﾌﾟ1号' },
+    { col: 'V', tag: 'tag05', kwIndex: 14, label: '排水処理棟 沈殿槽分配ﾎﾟﾝﾌﾟ2号' },
+    { col: 'W', tag: 'tag05', kwIndex: 15, label: '純水装置1号盤 井戸ﾎﾟﾝﾌﾟA' },
+    { col: 'X', tag: 'tag05', kwIndex: 16, label: '純水装置1号盤 井戸ﾎﾟﾝﾌﾟB' },
+    { col: 'Y', tag: 'tag05', kwIndex: 17, label: '純水装置1号盤 ろ過原水ﾎﾟﾝﾌﾟ' },
+    { col: 'Z', tag: 'tag05', kwIndex: 18, label: '純水装置1号盤 中継ﾎﾟﾝﾌﾟ' },
+    { col: 'AA', tag: 'tag05', kwIndex: 19, label: '純水装置1号盤 原水送水ﾎﾟﾝﾌﾟ' },
+    { col: 'AB', tag: 'tag05', kwIndex: 20, label: '純水装置1号盤 純水送水ﾎﾟﾝﾌﾟ' },
+    { col: 'AC', tag: 'tag05', kwIndex: 21, label: '純水装置1号盤 上水低圧ﾎﾟﾝﾌﾟ' },
+    { col: 'AD', tag: 'tag05', kwIndex: 22, label: '純水装置1号盤 ﾊﾟｽﾄﾗﾎﾟﾝﾌﾟ' },
+    { col: 'AE', tag: 'tag05', kwIndex: 23, label: '純水装置1号盤 駆動水ﾎﾟﾝﾌﾟ' },
+    { col: 'AF', tag: 'tag05', kwIndex: 24, label: '純水装置1号盤 UV殺菌器' },
+    { col: 'AG', tag: 'tag05', kwIndex: 25, label: '純水装置2号盤 2号中継ﾎﾟﾝﾌﾟゴウ' },
+    { col: 'AH', tag: 'tag05', kwIndex: 26, label: '純水装置2号盤 2号ろ過原水ﾎﾟﾝﾌﾟ' },
+    { col: 'AI', tag: 'tag05', kwIndex: 27, label: '純水装置2号盤 2号駆動水ﾎﾟﾝﾌﾟ' },
 
     // tag06 (1110-1209: 45列)
-    { col: 'AJ', tag: 'tag06', kwIndex: 0, label: '屋上 屋上室外機', category: 'total' },
-    { col: 'AK', tag: 'tag06', kwIndex: 1, label: '屋上 ﾁﾗｰ', category: 'chiller' },
-    { col: 'AL', tag: 'tag06', kwIndex: 2, label: '屋上 屋上室外機ACP-C', category: 'total' },
-    { col: 'AM', tag: 'tag06', kwIndex: 3, label: '屋上 屋上冷水2次ﾎﾟﾝﾌﾟ(生産用)', category: 'total' },
-    { col: 'AN', tag: 'tag06', kwIndex: 4, label: '抽出室 ﾙｰﾂﾌﾞﾛｱ', category: 'mixing' },
-    { col: 'AO', tag: 'tag06', kwIndex: 5, label: '抽出室 ﾛｰﾀﾘｰﾊﾞﾙﾌﾞ', category: 'mixing' },
-    { col: 'AP', tag: 'tag06', kwIndex: 6, label: '抽出室 粕搬送ｺﾝﾍﾞｱ抽出器下', category: 'supply' },
-    { col: 'AQ', tag: 'tag06', kwIndex: 7, label: '抽出室 粕搬送ｺﾝﾍﾞｱ合流CV', category: 'supply' },
-    { col: 'AR', tag: 'tag06', kwIndex: 8, label: '抽出室 粕搬送CV(ﾆｰﾀﾞｰ用)', category: 'supply' },
-    { col: 'AS', tag: 'tag06', kwIndex: 9, label: '抽出室 屋外振分ｽｸﾘｭｰ', category: 'supply' },
-    { col: 'AT', tag: 'tag06', kwIndex: 10, label: '2F 低圧電灯盤 №1 1LM-A', category: 'total' },
-    { col: 'AU', tag: 'tag06', kwIndex: 11, label: '2F 低圧電灯盤 №1 1LM-B', category: 'total' },
-    { col: 'AV', tag: 'tag06', kwIndex: 12, label: '2F 低圧電灯盤 №1 2LM-A', category: 'total' },
-    { col: 'AW', tag: 'tag06', kwIndex: 13, label: '2F 低圧電灯盤 №1 2LM-B', category: 'total' },
-    { col: 'AX', tag: 'tag06', kwIndex: 14, label: '2F 低圧電灯盤 №1 2LM-C', category: 'total' },
-    { col: 'AY', tag: 'tag06', kwIndex: 15, label: '2F 低圧電灯盤 №1 ｹﾞｰﾄﾊｳｽ', category: 'total' },
-    { col: 'AZ', tag: 'tag06', kwIndex: 16, label: '2F 低圧電灯盤 №1 8.20.18E包装制御盤', category: 'packaging' },
-    { col: 'BA', tag: 'tag06', kwIndex: 17, label: '2F 低圧電灯盤 №1 排水処理制御盤', category: 'total' },
-    { col: 'BB', tag: 'tag06', kwIndex: 18, label: '2F 低圧電灯盤 №1 1LM-C', category: 'total' },
-    { col: 'BC', tag: 'tag06', kwIndex: 19, label: '2F 低圧電灯盤 №1 ﾎﾞｲﾗ-室ｺﾝﾌﾟﾚｯｻｰ室電灯', category: 'total' },
-    { col: 'BD', tag: 'tag06', kwIndex: 20, label: '2F 低圧動力盤 №3 2M-A', category: 'total' },
-    { col: 'BE', tag: 'tag06', kwIndex: 21, label: '2F 低圧動力盤 №3 冷蔵倉庫', category: 'total' },
-    { col: 'BF', tag: 'tag06', kwIndex: 22, label: '2F 低圧動力盤 №3 包装制御盤', category: 'packaging' },
-    { col: 'BG', tag: 'tag06', kwIndex: 23, label: '2F 低圧動力盤 №3 1LM-A', category: 'total' },
-    { col: 'BH', tag: 'tag06', kwIndex: 24, label: '2F 低圧動力盤 №3 2LM-A', category: 'total' },
-    { col: 'BI', tag: 'tag06', kwIndex: 25, label: '2F 低圧動力盤 №3 2LM-B', category: 'total' },
-    { col: 'BJ', tag: 'tag06', kwIndex: 26, label: '2F 低圧動力盤 №3 1M-C', category: 'total' },
-    { col: 'BK', tag: 'tag06', kwIndex: 27, label: '2F 低圧動力盤 №3 調合CIP', category: 'mixing' },
-    { col: 'BL', tag: 'tag06', kwIndex: 28, label: '2F 低圧動力盤 №3 ﾎﾞﾄﾙ開梱室AC.ｷｬｯﾌﾟ室AC', category: 'total' },
-    { col: 'BM', tag: 'tag06', kwIndex: 29, label: '2F 低圧動力盤 №3 1LM-B', category: 'total' },
-    { col: 'BN', tag: 'tag06', kwIndex: 30, label: '2F 低圧動力盤 №3 2LM-C', category: 'total' },
-    { col: 'BO', tag: 'tag06', kwIndex: 31, label: '2F 低圧動力盤 №3 ｹﾞｰﾄﾊｳｽ', category: 'total' },
-    { col: 'BP', tag: 'tag06', kwIndex: 32, label: '2F 低圧動力盤 №4 ｼｰﾄ供給.ｹｰｽｺﾍﾞｱ.ﾊﾟﾚﾀｲｻﾞｰ', category: 'packaging' },
-    { col: 'BQ', tag: 'tag06', kwIndex: 33, label: '2F 低圧動力盤 №4 13E.31-3', category: 'packaging' },
-    { col: 'BR', tag: 'tag06', kwIndex: 34, label: '2F 低圧動力盤 №4 実瓶ｺﾝﾍﾞｱ振分装置', category: 'packaging' },
-    { col: 'BS', tag: 'tag06', kwIndex: 35, label: '2F 低圧動力盤 №4 ｹｰｻｰ制御盤', category: 'packaging' },
-    { col: 'BT', tag: 'tag06', kwIndex: 36, label: '2F 低圧動力盤 №4 分電盤(1)', category: 'total' },
-    { col: 'BU', tag: 'tag06', kwIndex: 37, label: '2F 低圧動力盤 №4 15-1', category: 'packaging' },
-    { col: 'BV', tag: 'tag06', kwIndex: 38, label: '2F 低圧動力盤 №4 充填ﾊﾟﾈﾙ', category: 'filling' },
-    { col: 'BW', tag: 'tag06', kwIndex: 39, label: '2F 低圧動力盤 №4 空ﾊﾟﾚｯﾄ搬送', category: 'supply' },
-    { col: 'BX', tag: 'tag06', kwIndex: 40, label: '2F 低圧動力盤 №4 ﾌｨﾗ給液制御盤', category: 'filling' },
-    { col: 'BY', tag: 'tag06', kwIndex: 41, label: '2F 低圧動力盤 №4 分電盤(2)', category: 'total' },
-    { col: 'BZ', tag: 'tag06', kwIndex: 42, label: '2F 低圧動力盤 №4 2E.3Eﾊﾞﾙｸﾃﾞﾊﾟﾚﾀｲｻﾞｰ', category: 'supply' },
-    { col: 'CA', tag: 'tag06', kwIndex: 43, label: '2F 低圧動力盤 №4 CIPパネル', category: 'filling' },
-    { col: 'CB', tag: null, fixedVal: 0.0, label: '2F 低圧動力盤 №5 HGINV', category: 'total' },
+    { col: 'AJ', tag: 'tag06', kwIndex: 0, label: '屋上 屋上室外機' },
+    { col: 'AK', tag: 'tag06', kwIndex: 1, label: '屋上 ﾁﾗｰ' },
+    { col: 'AL', tag: 'tag06', kwIndex: 2, label: '屋上 屋上室外機ACP-C' },
+    { col: 'AM', tag: 'tag06', kwIndex: 3, label: '屋上 屋上冷水2次ﾎﾟﾝﾌﾟ(生産用)' },
+    { col: 'AN', tag: 'tag06', kwIndex: 4, label: '抽出室 ﾙｰﾂﾌﾞﾛｱ' },
+    { col: 'AO', tag: 'tag06', kwIndex: 5, label: '抽出室 ﾛｰﾀﾘｰﾊﾞﾙﾌﾞ' },
+    { col: 'AP', tag: 'tag06', kwIndex: 6, label: '抽出室 粕搬送ｺﾝﾍﾞｱ抽出器下' },
+    { col: 'AQ', tag: 'tag06', kwIndex: 7, label: '抽出室 粕搬送ｺﾝﾍﾞｱ合流CV' },
+    { col: 'AR', tag: 'tag06', kwIndex: 8, label: '抽出室 粕搬送CV(ﾆｰﾀﾞｰ用)' },
+    { col: 'AS', tag: 'tag06', kwIndex: 9, label: '抽出室 屋外振分ｽｸﾘｭｰ' },
+    { col: 'AT', tag: 'tag06', kwIndex: 10, label: '2F 低圧電灯盤 №1 1LM-A' },
+    { col: 'AU', tag: 'tag06', kwIndex: 11, label: '2F 低圧電灯盤 №1 1LM-B' },
+    { col: 'AV', tag: 'tag06', kwIndex: 12, label: '2F 低圧電灯盤 №1 2LM-A' },
+    { col: 'AW', tag: 'tag06', kwIndex: 13, label: '2F 低圧電灯盤 №1 2LM-B' },
+    { col: 'AX', tag: 'tag06', kwIndex: 14, label: '2F 低圧電灯盤 №1 2LM-C' },
+    { col: 'AY', tag: 'tag06', kwIndex: 15, label: '2F 低圧電灯盤 №1 ｹﾞｰﾄﾊｳｽ' },
+    { col: 'AZ', tag: 'tag06', kwIndex: 16, label: '2F 低圧電灯盤 №1 8.20.18E包装制御盤' },
+    { col: 'BA', tag: 'tag06', kwIndex: 17, label: '2F 低圧電灯盤 №1 排水処理制御盤' },
+    { col: 'BB', tag: 'tag06', kwIndex: 18, label: '2F 低圧電灯盤 №1 1LM-C' },
+    { col: 'BC', tag: 'tag06', kwIndex: 19, label: '2F 低圧電灯盤 №1 ﾎﾞｲﾗ-室ｺﾝﾌﾟﾚｯｻｰ室電灯' },
+    { col: 'BD', tag: 'tag06', kwIndex: 20, label: '2F 低圧動力盤 №3 2M-A' },
+    { col: 'BE', tag: 'tag06', kwIndex: 21, label: '2F 低圧動力盤 №3 冷蔵倉庫' },
+    { col: 'BF', tag: 'tag06', kwIndex: 22, label: '2F 低圧動力盤 №3 包装制御盤' },
+    { col: 'BG', tag: 'tag06', kwIndex: 23, label: '2F 低圧動力盤 №3 1LM-A' },
+    { col: 'BH', tag: 'tag06', kwIndex: 24, label: '2F 低圧動力盤 №3 2LM-A' },
+    { col: 'BI', tag: 'tag06', kwIndex: 25, label: '2F 低圧動力盤 №3 2LM-B' },
+    { col: 'BJ', tag: 'tag06', kwIndex: 26, label: '2F 低圧動力盤 №3 1M-C' },
+    { col: 'BK', tag: 'tag06', kwIndex: 27, label: '2F 低圧動力盤 №3 調合CIP' },
+    { col: 'BL', tag: 'tag06', kwIndex: 28, label: '2F 低圧動力盤 №3 ﾎﾞﾄﾙ開梱室AC.ｷｬｯﾌﾟ室AC' },
+    { col: 'BM', tag: 'tag06', kwIndex: 29, label: '2F 低圧動力盤 №3 1LM-B' },
+    { col: 'BN', tag: 'tag06', kwIndex: 30, label: '2F 低圧動力盤 №3 2LM-C' },
+    { col: 'BO', tag: 'tag06', kwIndex: 31, label: '2F 低圧動力盤 №3 ｹﾞｰﾄﾊｳｽ' },
+    { col: 'BP', tag: 'tag06', kwIndex: 32, label: '2F 低圧動力盤 №4 ｼｰﾄ供給.ｹｰｽｺﾍﾞｱ.ﾊﾟﾚﾀｲｻﾞｰ' },
+    { col: 'BQ', tag: 'tag06', kwIndex: 33, label: '2F 低圧動力盤 №4 13E.31-3' },
+    { col: 'BR', tag: 'tag06', kwIndex: 34, label: '2F 低圧動力盤 №4 実瓶ｺﾝﾍﾞｱ振分装置' },
+    { col: 'BS', tag: 'tag06', kwIndex: 35, label: '2F 低圧動力盤 №4 ｹｰｻｰ制御盤' },
+    { col: 'BT', tag: 'tag06', kwIndex: 36, label: '2F 低圧動力盤 №4 分電盤(1)' },
+    { col: 'BU', tag: 'tag06', kwIndex: 37, label: '2F 低圧動力盤 №4 15-1' },
+    { col: 'BV', tag: 'tag06', kwIndex: 38, label: '2F 低圧動力盤 №4 充填ﾊﾟﾈﾙ' },
+    { col: 'BW', tag: 'tag06', kwIndex: 39, label: '2F 低圧動力盤 №4 空ﾊﾟﾚｯﾄ搬送' },
+    { col: 'BX', tag: 'tag06', kwIndex: 40, label: '2F 低圧動力盤 №4 ﾌｨﾗ給液制御盤' },
+    { col: 'BY', tag: 'tag06', kwIndex: 41, label: '2F 低圧動力盤 №4 分電盤(2)' },
+    { col: 'BZ', tag: 'tag06', kwIndex: 42, label: '2F 低圧動力盤 №4 2E.3Eﾊﾞﾙｸﾃﾞﾊﾟﾚﾀｲｻﾞｰ' },
+    { col: 'CA', tag: 'tag06', kwIndex: 43, label: '2F 低圧動力盤 №4 CIPパネル' },
+    { col: 'CB', tag: null, fixedVal: 0.0, label: '2F 低圧動力盤 №5 HGINV' },
 
     // tag07 (1210-1236: 13列)
-    { col: 'CC', tag: 'tag07', kwIndex: 0, label: '2F 低圧動力盤 №5 抽出ﾊﾟﾈﾙ.抽出工程ﾊﾟﾈﾙ', category: 'mixing' },
-    { col: 'CD', tag: 'tag07', kwIndex: 1, label: '2F 低圧動力盤 №5 1LM-C', category: 'total' },
-    { col: 'CE', tag: 'tag07', kwIndex: 2, label: '2F 低圧動力盤 №5 29-1', category: 'packaging' },
-    { col: 'CF', tag: 'tag07', kwIndex: 3, label: '2F 低圧動力盤 №5 36.39', category: 'packaging' },
-    { col: 'CG', tag: 'tag07', kwIndex: 4, label: '2F 低圧動力盤 №5 殺菌制御盤', category: 'filling' },
-    { col: 'CH', tag: 'tag07', kwIndex: 5, label: '2F 低圧動力盤 №5 ｸﾗﾘ動力(PET・CUP)', category: 'mixing' },
-    { col: 'CI', tag: 'tag07', kwIndex: 6, label: '2F 低圧動力盤 №5 調合ﾀﾝｸﾊﾟﾈﾙ', category: 'mixing' },
-    { col: 'CJ', tag: 'tag07', kwIndex: 7, label: '2F 低圧動力盤 №5 ｽﾄﾚｰｼﾞ温水ﾊﾟﾈﾙ', category: 'mixing' },
-    { col: 'CK', tag: 'tag07', kwIndex: 8, label: '2F 低圧動力盤 №5 ﾆｰﾀﾞｰ.抽出工程ﾊﾟﾈﾙ', category: 'mixing' },
-    { col: 'CL', tag: 'tag07', kwIndex: 9, label: '2F 低圧動力盤 №5 新1真空ﾎﾟﾝﾌﾟﾗﾍﾞﾗｰ制御盤', category: 'packaging' },
-    { col: 'CM', tag: 'tag07', kwIndex: 10, label: '2F 低圧動力盤 №5 定置式発泡洗浄装置制御盤', category: 'filling' },
-    { col: 'CN', tag: 'tag07', kwIndex: 11, label: '2F 低圧動力盤 №5 空ﾎﾞﾄﾙ制御盤', category: 'filling' },
-    { col: 'CO', tag: 'tag07', kwIndex: 12, label: '2F 低圧動力盤 №5 ﾘﾝｻ・ﾌｨﾗ・ｷｬｯﾊﾟ制御盤', category: 'filling' }
+    { col: 'CC', tag: 'tag07', kwIndex: 0, label: '2F 低圧動力盤 №5 抽出ﾊﾟﾈﾙ.抽出工程ﾊﾟﾈﾙ' },
+    { col: 'CD', tag: 'tag07', kwIndex: 1, label: '2F 低圧動力盤 №5 1LM-C' },
+    { col: 'CE', tag: 'tag07', kwIndex: 2, label: '2F 低圧動力盤 №5 29-1' },
+    { col: 'CF', tag: 'tag07', kwIndex: 3, label: '2F 低圧動力盤 №5 36.39' },
+    { col: 'CG', tag: 'tag07', kwIndex: 4, label: '2F 低圧動力盤 №5 殺菌制御盤' },
+    { col: 'CH', tag: 'tag07', kwIndex: 5, label: '2F 低圧動力盤 №5 ｸﾗﾘ動力(PET・CUP)' },
+    { col: 'CI', tag: 'tag07', kwIndex: 6, label: '2F 低圧動力盤 №5 調合ﾀﾝｸﾊﾟﾈﾙ' },
+    { col: 'CJ', tag: 'tag07', kwIndex: 7, label: '2F 低圧動力盤 №5 ｽﾄﾚｰｼﾞ温水ﾊﾟﾈﾙ' },
+    { col: 'CK', tag: 'tag07', kwIndex: 8, label: '2F 低圧動力盤 №5 ﾆｰﾀﾞｰ.抽出工程ﾊﾟﾈﾙ' },
+    { col: 'CL', tag: 'tag07', kwIndex: 9, label: '2F 低圧動力盤 №5 新1真空ﾎﾟﾝﾌﾟﾗﾍﾞﾗｰ制御盤' },
+    { col: 'CM', tag: 'tag07', kwIndex: 10, label: '2F 低圧動力盤 №5 定置式発泡洗浄装置制御盤' },
+    { col: 'CN', tag: 'tag07', kwIndex: 11, label: '2F 低圧動力盤 №5 空ﾎﾞﾄﾙ制御盤' },
+    { col: 'CO', tag: 'tag07', kwIndex: 12, label: '2F 低圧動力盤 №5 ﾘﾝｻ・ﾌｨﾗ・ｷｬｯﾊﾟ制御盤' }
   ];
 
   // グラフ目盛りスケール設定 (初期マスター定義)
   const SCALE_CONFIG = {
     mode: 'auto', // 'auto' (自動最適化) または 'fixed' (固定値指定)
+    // 自動算出時、データの最大値を軸の高さのどのあたりに置くか (0〜1)。小さくするほど上の余白が広がる
+    autoLayout: {
+      rateBarPeakRatio: 0.6,  // 原単位グラフ: 品種別の棒の最大 (折れ線と重ならないよう低めに置く)
+      rateLinePeakRatio: 0.9, // 原単位グラフ: 全体平均の折れ線の最大
+      trendPeakRatio: 0.9     // トレンドグラフ (総量系): 品種別の線の最大
+    },
     fixedValues: {
       daily: {
         totalKwh: 30000 // 単月詳細: 日別総電力量 [kWh]
@@ -304,9 +320,13 @@
   return {
     VARIETY_MASTER,
     VARIETY_GROUPS,
+    VARIETY_KEYS,
     VARIETY_MAPPING,
     EVALUATION_METRICS,
-    OPERATION_MODES,
+    RATE_METRIC_KEYS,
+    FISCAL_MONTH_ORDER,
+    FISCAL_MONTH_LABELS,
+    getFiscalYear,
     STEP_MASTER,
     CATEGORIES,
     CATEGORY_COLUMN_MAP,

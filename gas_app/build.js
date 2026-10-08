@@ -56,7 +56,7 @@ function build() {
     }
   });
 
-  // スクリプト読み込み領域（<?!= include ... ?> から </body> 直前まで）を置換
+  // スクリプト読み込み領域（「スクリプト読み込み」コメントから </body> 直前まで）を置換
   const scriptRegex = /<!-- スクリプト読み込み[\s\S]*?<\/body>/;
   html = html.replace(scriptRegex, `${scriptsBundle}</body>`);
 

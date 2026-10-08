@@ -13,10 +13,8 @@ var CONFIG = {
   SHEET_NAMES: {
     HOURLY: '1時間集計(ALL)',
     DAILY: '日別集約',
-    MONTHLY: '月別集約',
     VARIETY: '品種別集約',
-    KPI: 'KPI評価',
-    MASTER: 'マスター'
+    KPI: 'KPI評価'
   },
 
   // 品種8大分類キー
@@ -151,6 +149,12 @@ var CONFIG = {
   // グラフ目盛りスケール設定 (初期マスター定義)
   SCALE_CONFIG: {
     mode: 'auto', // 'auto' (自動最適化) または 'fixed' (固定値指定)
+    // 自動算出時、データの最大値を軸の高さのどのあたりに置くか (0〜1)。小さくするほど上の余白が広がる
+    autoLayout: {
+      rateBarPeakRatio: 0.6,  // 原単位グラフ: 品種別の棒の最大 (折れ線と重ならないよう低めに置く)
+      rateLinePeakRatio: 0.9, // 原単位グラフ: 全体平均の折れ線の最大
+      trendPeakRatio: 0.9     // トレンドグラフ (総量系): 品種別の線の最大
+    },
     fixedValues: {
       daily: {
         totalKwh: 30000 // 単月詳細: 日別総電力量 [kWh]
@@ -171,10 +175,3 @@ var CONFIG = {
     }
   }
 };
-
-/**
- * 設定オブジェクトを取得する
- */
-function getConfig() {
-  return CONFIG;
-}

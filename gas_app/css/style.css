@@ -11,32 +11,17 @@
   --primary-gradient: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
   
   --secondary: #475569;         /* Slate-600 */
-  --secondary-hover: #334155;   /* Slate-700 */
   --secondary-light: #f1f5f9;   /* Slate-100 */
-  
+
   --success: #10b981;           /* Emerald-500 */
   --success-light: #d1fae5;     /* Emerald-100 */
   --warning: #f59e0b;           /* Amber-500 */
-  --warning-light: #fef3c7;     /* Amber-100 */
   --danger: #ef4444;            /* Red-500 */
-  --danger-light: #fee2e2;      /* Red-100 */
-
-  /* 品種分類別カラー (Excel原紙準拠の識別色) */
-  --color-20L: #2563eb;         /* 2.0L: Royal Blue */
-  --color-15L: #0891b2;         /* 1.5L: Cyan */
-  --color-10L: #059669;         /* 1.0L: Emerald */
-  --color-600R: #65a30d;        /* 600mL丸: Lime */
-  --color-500R: #d97706;        /* 500mL丸: Amber */
-  --color-500S: #ea580c;        /* 500mL角: Orange */
-  --color-350: #7c3aed;         /* 350mL: Purple */
-  --color-280: #db2777;         /* 280mL: Pink */
-  --color-monthly: #1e293b;     /* 月計: Slate-800 */
 
   /* 背景・カード・ボーダー・テキスト */
   --bg-page: #f8fafc;
   --bg-card: #ffffff;
   --border: #e2e8f0;
-  --border-focus: #38bdf8;
   --text-main: #0f172a;
   --text-muted: #64748b;
   --text-light: #94a3b8;
@@ -470,10 +455,6 @@ button, input, select {
   grid-template-columns: 2fr 1fr;
   gap: 1.25rem;
   margin-bottom: 1.25rem;
-}
-
-.chart-grid.single {
-  grid-template-columns: 1fr;
 }
 
 .chart-card {

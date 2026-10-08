@@ -13,24 +13,22 @@
     annualEquipmentViewMode: 'utilityGroup', // 'utilityGroup' | 'detail'
     annualData: null,                // 年間データセット
     loadedFiles: [],                 // [{ fileName, content }]
-    detectedTags: new Set(),
     currentAggregation: null,        // 単月1時間集計 (現在表示中)
-    currentCategoryResult: null,     // 単月カテゴリ集計 (現在表示中)
-    currentKpiResult: null,
     monthlyDatasets: {},             // { [ym]: { ym, aggResult, catResult, kpiResult, externalData } }
     annualDatasets: {},              // { [fiscalYear]: annualData }
     lastSelectedMonthlyYm: null,     // 直前に表示していた年月
     syncedYms: new Set(),            // スプレッドシート反映済み年月セット
     scaleConfig: null,               // グラフ目盛りスケール設定
     externalData: {
-      production: { totalBottles: 0 },
       electricity: { usedKwhThousand: 288.075, costThousandYen: 6176.992, unitPriceYenPerKwh: 21.4423 }
     }
   };
 
   // 品種8大分類キー
-  const VARIETY_KEYS = ['2.0L', '1.5L', '1.0L', '600mL丸', '500mL丸', '500mL角', '350mL', '280mL'];
+  const VARIETY_KEYS = AppConfig.VARIETY_KEYS;
   const SCALE_STORAGE_KEY = 'energy_app_chart_scale_config_v1';
+  // 目盛り自動算出の高さの目安。AppConfig.SCALE_CONFIG は起動時にGAS側の値で置き換わるため、読込時点の値を既定として保持する
+  const DEFAULT_AUTO_LAYOUT = AppConfig.SCALE_CONFIG.autoLayout;
 
   // DOM要素
   let dropzone, fileInput, progressBarContainer, progressBarFill;
@@ -38,7 +36,7 @@
   let metricSelector, fiscalYearSelector;
   let monthlyYearMonthSelect, monthlyDataStatus;
   let scaleSettingBtn, scaleSettingModal, closeScaleModalBtn, saveScaleModalBtn, resetScaleModalBtn;
-  let scaleModeAuto, scaleModeFixed, fixedScaleInputsArea;
+  let scaleModeAuto, scaleModeFixed;
 
   /**
    * グローバルローディング表示 (通常メッセージのみ)
@@ -144,30 +142,8 @@
     const cfg = state.scaleConfig || AppConfig.SCALE_CONFIG;
     const mode = (cfg && cfg.mode) ? cfg.mode : 'auto';
     const fixed = (cfg && cfg.fixedValues) ? cfg.fixedValues : {};
+    const layout = { ...DEFAULT_AUTO_LAYOUT, ...((AppConfig.SCALE_CONFIG && AppConfig.SCALE_CONFIG.autoLayout) || {}) };
 
-    if (mode === 'fixed') {
-      return {
-        mode: 'fixed',
-        dailyMax: fixed.daily ? fixed.daily.totalKwh : 30000,
-        annualEquipMax: fixed.annualEquipment ? fixed.annualEquipment.totalKwh : 600000,
-        getAnnualVarietyScale: function(metricKey) {
-          const isRate = ['kwhPerBottle', 'costPerBottle', 'kwhPerMinute', 'costPerMinute'].includes(metricKey);
-          const v = (fixed.annualVariety && fixed.annualVariety[metricKey] > 0)
-            ? fixed.annualVariety[metricKey]
-            : undefined;
-          if (isRate) {
-            return {
-              barMax: v,
-              lineMax: v ? Math.round(v * 0.6 * 100) / 100 : undefined
-            };
-          } else {
-            return { max: v };
-          }
-        }
-      };
-    }
-
-    // 自動最適化モード ('auto')
     // 1. 単月詳細 (日別) 最大値の走査
     let maxDaily = 0;
     Object.values(state.monthlyDatasets).forEach(ds => {
@@ -205,7 +181,7 @@
           const mObj = modeData[m.key];
           if (!mObj || !mObj.months) return;
 
-          const isRateMetric = ['kwhPerBottle', 'costPerBottle', 'kwhPerMinute', 'costPerMinute'].includes(m.key);
+          const isRateMetric = AppConfig.RATE_METRIC_KEYS.includes(m.key);
 
           if (!metricMaxMap[m.key]) {
             metricMaxMap[m.key] = { maxMonthTotal: 0, maxVarietyVal: 0 };
@@ -235,6 +211,37 @@
       }
     });
 
+    // 品種別トレンドグラフ (総量系) の上限。品種単体の最大値から算出する
+    // (集約グラフの上限は8品種の月計が基準のため、そのまま使うと品種単体の線が下に寄ってしまう)
+    const getTrendMax = function(metricKey) {
+      const dataStats = metricMaxMap[metricKey];
+      return dataStats ? ChartManager.getAxisMaxForPeak(dataStats.maxVarietyVal, layout.trendPeakRatio) : undefined;
+    };
+
+    // 固定値モード ('fixed'): 集約グラフ・設備別・日別は設定値を使う。トレンドグラフは入力欄が無いため、常にデータから算出する
+    if (mode === 'fixed') {
+      return {
+        mode: 'fixed',
+        dailyMax: fixed.daily ? fixed.daily.totalKwh : 30000,
+        annualEquipMax: fixed.annualEquipment ? fixed.annualEquipment.totalKwh : 600000,
+        getAnnualVarietyScale: function(metricKey) {
+          const isRate = AppConfig.RATE_METRIC_KEYS.includes(metricKey);
+          const v = (fixed.annualVariety && fixed.annualVariety[metricKey] > 0)
+            ? fixed.annualVariety[metricKey]
+            : undefined;
+          if (isRate) {
+            return {
+              barMax: v,
+              lineMax: v ? Math.round(v * 0.6 * 100) / 100 : undefined
+            };
+          } else {
+            return { max: v, trendMax: getTrendMax(metricKey) };
+          }
+        }
+      };
+    }
+
+    // 自動最適化モード ('auto')
     const powerMonthMax = metricMaxMap['powerKwh'] ? metricMaxMap['powerKwh'].maxMonthTotal : 0;
     const synchronizedPowerMax = Math.max(maxEquipTotal, powerMonthMax);
     const autoPowerMax = synchronizedPowerMax > 0 && typeof ChartManager !== 'undefined' && ChartManager.getNiceMax
@@ -246,24 +253,24 @@
       annualEquipMax: autoPowerMax,
       getAnnualVarietyScale: function(metricKey) {
         if (metricKey === 'powerKwh') {
-          return { max: autoPowerMax };
+          return { max: autoPowerMax, trendMax: getTrendMax(metricKey) };
         }
-        const isRate = ['kwhPerBottle', 'costPerBottle', 'kwhPerMinute', 'costPerMinute'].includes(metricKey);
+        const isRate = AppConfig.RATE_METRIC_KEYS.includes(metricKey);
         const dataStats = metricMaxMap[metricKey];
         if (!dataStats || typeof ChartManager === 'undefined' || !ChartManager.getNiceMax) return {};
 
         if (isRate) {
-          // 棒グラフ（左軸・各品種）は実最大値の2.0倍で画面下半分 (0〜45%) に抑える
-          const niceBar = dataStats.maxVarietyVal > 0 ? ChartManager.getNiceMax(dataStats.maxVarietyVal * 2.0) : undefined;
-          // 月計折れ線グラフ（右軸・全体平均）は実最大値の1.25倍で画面上部 (55〜75%) を推移させ、棒グラフと重ならないようにする
-          const niceLine = dataStats.maxMonthTotal > 0 ? ChartManager.getNiceMax(dataStats.maxMonthTotal * 1.25) : undefined;
+          // 棒グラフ（左軸・各品種）と月計折れ線グラフ（右軸・全体平均）は別々の軸を持つ。
+          // 棒の最大を軸の中ほど、折れ線の最大を軸の上部に置き、棒を大きく見せつつ折れ線と重なりにくくする
+          // (高さの目安は SCALE_CONFIG.autoLayout で調整する)
           return {
-            barMax: niceBar,
-            lineMax: niceLine
+            barMax: ChartManager.getAxisMaxForPeak(dataStats.maxVarietyVal, layout.rateBarPeakRatio),
+            lineMax: ChartManager.getAxisMaxForPeak(dataStats.maxMonthTotal, layout.rateLinePeakRatio)
           };
         } else {
           return {
-            max: dataStats.maxMonthTotal > 0 ? ChartManager.getNiceMax(dataStats.maxMonthTotal) : undefined
+            max: dataStats.maxMonthTotal > 0 ? ChartManager.getNiceMax(dataStats.maxMonthTotal) : undefined,
+            trendMax: getTrendMax(metricKey)
           };
         }
       }
@@ -392,7 +399,6 @@
   function updateSyncStatusUI() {
     const badge = document.getElementById('syncStatusBadge');
     const textElem = document.getElementById('syncStatusText');
-    const syncButton = document.getElementById('syncBtn');
     if (!badge || !textElem) return;
 
     const yms = Object.keys(state.monthlyDatasets);
@@ -400,9 +406,9 @@
 
     if (totalCount === 0) {
       badge.style.display = 'none';
-      if (syncButton) {
-        syncButton.disabled = true;
-        syncButton.textContent = '☁️ スプレッドシートへ反映';
+      if (syncBtn) {
+        syncBtn.disabled = true;
+        syncBtn.textContent = '☁️ スプレッドシートへ反映';
       }
       return;
     }
@@ -416,16 +422,16 @@
     if (pendingCount > 0) {
       badge.classList.add('has-pending');
       textElem.textContent = `読込済: 計 ${totalCount}ヶ月 (未反映: ${pendingCount}ヶ月 / 反映済: ${syncedCount}ヶ月)`;
-      if (syncButton) {
-        syncButton.disabled = false;
-        syncButton.textContent = `☁️ スプレッドシートへ反映 (${pendingCount}ヶ月分)`;
+      if (syncBtn) {
+        syncBtn.disabled = false;
+        syncBtn.textContent = `☁️ スプレッドシートへ反映 (${pendingCount}ヶ月分)`;
       }
     } else {
       badge.classList.add('all-synced');
       textElem.textContent = `読込済: 計 ${totalCount}ヶ月 (全 ${syncedCount}ヶ月 反映済み)`;
-      if (syncButton) {
-        syncButton.disabled = false;
-        syncButton.textContent = `☁️ スプレッドシートへ反映 (全月反映済)`;
+      if (syncBtn) {
+        syncBtn.disabled = false;
+        syncBtn.textContent = `☁️ スプレッドシートへ反映 (全月反映済)`;
       }
     }
   }
@@ -453,7 +459,6 @@
             }
 
             if (res.savedYms && res.savedYms.length > 0) {
-              console.log('Restored saved datasets from spreadsheet:', res.savedYms);
               // 既存の monthlyDatasets とマージ
               Object.keys(res.monthlySummary).forEach(ym => {
               if (!state.monthlyDatasets[ym]) {
@@ -536,7 +541,6 @@
     resetScaleModalBtn = document.getElementById('resetScaleModalBtn');
     scaleModeAuto = document.getElementById('scaleModeAuto');
     scaleModeFixed = document.getElementById('scaleModeFixed');
-    fixedScaleInputsArea = document.getElementById('fixedScaleInputsArea');
   }
 
   function setupEventListeners() {
@@ -886,7 +890,7 @@
     // タイトル更新
     setElemText('currentMetricLabel', `${metricConfig.name} (${metricConfig.unit})`);
     setElemText('tableMetricTitle', `${metricConfig.name} [${metricConfig.unit}]`);
-    const isRateMetric = ['kwhPerBottle', 'costPerBottle', 'kwhPerMinute', 'costPerMinute'].includes(metricKey);
+    const isRateMetric = AppConfig.RATE_METRIC_KEYS.includes(metricKey);
     setElemText('annualStackedChartTitle', isRateMetric 
       ? '📊 月別電力使用量集約グラフ (8品種別 ＆ 全体平均折れ線)' 
       : '📊 月別電力使用量集約グラフ (8品種積み上げ)');
@@ -929,19 +933,6 @@
     const labels = state.annualData.monthLabels;
     const digits = metricConfig.digits;
 
-    let runningSum = 0;
-    const currentMode = state.currentAnnualMode;
-    const modeObj = (state.annualData.modes && state.annualData.modes[currentMode]) || {};
-    const powerMonths = modeObj.powerKwh ? modeObj.powerKwh.months : null;
-    const bottleMonths = modeObj.productionBottles ? modeObj.productionBottles.months : null;
-    const timeMonths = modeObj.operationMin ? modeObj.operationMin.months : null;
-    const costMonths = modeObj.powerCostYen ? modeObj.powerCostYen.months : null;
-
-    let cumPower = 0;
-    let cumBottles = 0;
-    let cumTime = 0;
-    let cumCost = 0;
-
     // 各月行 (4月〜3月)
     months.forEach((ym, idx) => {
       const mObj = metricData.months[ym] || { cumulativeTotal: 0, monthlyTotal: 0, varieties: {} };
@@ -950,38 +941,11 @@
       const hasData = mObj.hasData !== false && mObj.monthlyTotal !== null;
       const formatVal = (v) => {
         if (v === null || v === undefined) return '<span style="color:var(--text-light);font-weight:normal;">---</span>';
-        return typeof v === 'number' ? v.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : v;
+        return typeof v === 'number' ? formatNumber(v, digits) : v;
       };
 
-      // 累計値の取得または動的算出 (データが存在する月のみ累積)
-      let cumVal = mObj.cumulativeTotal;
-      if (!hasData) {
-        cumVal = null;
-      } else if (cumVal === undefined || cumVal === null) {
-        if (['powerKwh', 'operationMin', 'productionBottles', 'powerCostYen'].includes(state.currentMetric)) {
-          runningSum += (mObj.monthlyTotal || 0);
-          cumVal = runningSum;
-        } else if (state.currentMetric === 'kwhPerBottle') {
-          cumPower += (powerMonths && powerMonths[ym] ? powerMonths[ym].monthlyTotal : 0);
-          cumBottles += (bottleMonths && bottleMonths[ym] ? bottleMonths[ym].monthlyTotal : 0);
-          cumVal = cumBottles > 0 ? (cumPower / cumBottles) : 0;
-        } else if (state.currentMetric === 'kwhPerMinute') {
-          cumPower += (powerMonths && powerMonths[ym] ? powerMonths[ym].monthlyTotal : 0);
-          cumTime += (timeMonths && timeMonths[ym] ? timeMonths[ym].monthlyTotal : 0);
-          cumVal = cumTime > 0 ? (cumPower / cumTime) : 0;
-        } else if (state.currentMetric === 'costPerBottle') {
-          cumCost += (costMonths && costMonths[ym] ? costMonths[ym].monthlyTotal : 0);
-          cumBottles += (bottleMonths && bottleMonths[ym] ? bottleMonths[ym].monthlyTotal : 0);
-          cumVal = cumBottles > 0 ? (cumCost / cumBottles) : 0;
-        } else if (state.currentMetric === 'costPerMinute') {
-          cumCost += (costMonths && costMonths[ym] ? costMonths[ym].monthlyTotal : 0);
-          cumTime += (timeMonths && timeMonths[ym] ? timeMonths[ym].monthlyTotal : 0);
-          cumVal = cumTime > 0 ? (cumCost / cumTime) : 0;
-        } else {
-          runningSum += (mObj.monthlyTotal || 0);
-          cumVal = runningSum;
-        }
-      }
+      // 累計値 (データが存在しない月は空欄)
+      const cumVal = hasData ? mObj.cumulativeTotal : null;
 
       let html = `
         <td style="font-weight: 600;">${labels[idx]} (${ym})</td>
@@ -1006,7 +970,7 @@
 
     const formatVal = (v) => {
       if (v === null || v === undefined) return '0';
-      return typeof v === 'number' ? v.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : v;
+      return typeof v === 'number' ? formatNumber(v, digits) : v;
     };
 
     let totHtml = `
@@ -1041,8 +1005,8 @@
     const waterHours = ops.waterHours ? ops.waterHours.annualTotal : 0;
 
     // 1. KPIサマリーカード
-    setElemText('kpiEquipTotalKwh', totalPower.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
-    setElemText('kpiEquipUtilityKwh', utilPower.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+    setElemText('kpiEquipTotalKwh', formatNumber(totalPower, 1));
+    setElemText('kpiEquipUtilityKwh', formatNumber(utilPower, 1));
     const utilRatio = totalPower > 0 ? ((utilPower / totalPower) * 100).toFixed(1) : '0.0';
     setElemText('kpiEquipUtilityRatio', `${utilRatio}%`);
 
@@ -1061,11 +1025,11 @@
     });
     setElemText('kpiEquipTopName', topName);
     const topRatio = totalPower > 0 ? ((topVal / totalPower) * 100).toFixed(1) : '0.0';
-    setElemText('kpiEquipTopKwh', topVal.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+    setElemText('kpiEquipTopKwh', formatNumber(topVal, 1));
     setElemText('kpiEquipTopRatio', `${topRatio}%`);
 
-    setElemText('kpiEquipFillingHours', fillingHours.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
-    setElemText('kpiEquipWaterHours', waterHours.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+    setElemText('kpiEquipFillingHours', formatNumber(fillingHours, 1));
+    setElemText('kpiEquipWaterHours', formatNumber(waterHours, 1));
 
     // 2. チャート描画
     if (window.ChartManager) {
@@ -1129,7 +1093,7 @@
       }
 
       const trClass = row.className || '';
-      const valFormatted = annualVal.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+      const valFormatted = formatNumber(annualVal, 1);
 
       html += `<tr class="${trClass}">
         <td class="font-medium text-left">${row.label}</td>
@@ -1139,7 +1103,7 @@
       for (let i = 0; i < 12; i++) {
         const mVal = monthlyVals[i] !== undefined && monthlyVals[i] !== null ? monthlyVals[i] : null;
         const mFormatted = mVal !== null
-          ? mVal.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+          ? formatNumber(mVal, 1)
           : '<span style="color:var(--text-light);font-weight:normal;">---</span>';
         html += `<td class="text-right font-tabular">${mFormatted}</td>`;
       }
@@ -1147,10 +1111,6 @@
     });
     tbody.innerHTML = html;
   }
-
-  // =========================================================================
-  // 単月詳細データ処理＆ETL連携ロジック
-  // =========================================================================
 
   // =========================================================================
   // 単月詳細データ処理＆ETL連携ロジック (複数月管理・切替対応)
@@ -1195,8 +1155,6 @@
   function renderSingleMonthData(monthDataset) {
     if (!monthDataset) return;
     state.currentAggregation = monthDataset.aggResult || null;
-    state.currentCategoryResult = monthDataset.catResult || null;
-    state.currentKpiResult = monthDataset.kpiResult || null;
 
     const catResult = monthDataset.catResult || {};
     const dailyTotals = catResult.categoryDailyTotals || [];
@@ -1404,7 +1362,6 @@
     // 新規CSV投入時は、過去セッションの loadedFiles をリフレッシュ
     if (txtCsvFiles.length > 0) {
       state.loadedFiles = [];
-      state.detectedTags.clear();
       document.querySelectorAll('.tag-badge:not(.excel)').forEach(el => el.classList.remove('detected'));
     }
 
@@ -1416,16 +1373,13 @@
         const buffer = await readFileAsArrayBuffer(ef);
         if (!buffer) continue;
         const normName = ef.name.normalize('NFC');
-        const lowerNorm = normName.toLowerCase();
         state.loadedExcelFiles.push({ name: normName, buffer });
 
-        const isEnergy = lowerNorm.includes('エネルギー') || lowerNorm.includes('かつらぎ') || lowerNorm.includes('energy');
-        const isPet = lowerNorm.includes('月報') || lowerNorm.includes('pet');
-
-        if (isEnergy) {
+        const excelKind = detectExcelKind(normName);
+        if (excelKind === 'energy') {
           updateTagBadge('tagEnergy', true);
           showToast(`エネルギー計算表 (${normName}) を読み込みました`, 'success');
-        } else if (isPet) {
+        } else if (excelKind === 'pet') {
           updateTagBadge('tagPet', true);
           showToast(`月報PET (${normName}) を読み込みました`, 'success');
         } else {
@@ -1446,7 +1400,6 @@
           state.loadedFiles.push({ fileName: f.name, content: text });
           const tagType = CsvParser.detectTagType(f.name, text.slice(0, 3000).split(/\r?\n/));
           if (tagType) {
-            state.detectedTags.add(tagType);
             updateTagBadge(tagType, true);
           }
         }
@@ -1478,6 +1431,52 @@
   }
 
   /**
+   * Excelファイル名から種別を判定する
+   * @param {string} normName NFC正規化済みのファイル名
+   * @returns {string|null} 'energy' (エネルギー計算表) / 'pet' (月報PET) / null (対象外)
+   */
+  function detectExcelKind(normName) {
+    const lowerNorm = normName.toLowerCase();
+    if (lowerNorm.includes('エネルギー') || lowerNorm.includes('かつらぎ') || lowerNorm.includes('energy')) return 'energy';
+    if (lowerNorm.includes('月報') || lowerNorm.includes('pet')) return 'pet';
+    return null;
+  }
+
+  /**
+   * 読み込み済みExcelから、対象年月の外部データ（生産本数・電力量単価）を抽出する
+   * 該当データが取れなかった項目は初期値（本数0、既定の電力量単価）のまま返す
+   * @param {string} ym 'YYYYMM'
+   * @returns {Object} { production, electricity }
+   */
+  function extractExternalDataForMonth(ym) {
+    let production = { totalBottles: 0, varieties: {} };
+    let electricity = { ...state.externalData.electricity };
+
+    for (const ef of (state.loadedExcelFiles || [])) {
+      const excelKind = detectExcelKind(ef.name);
+      try {
+        if (excelKind === 'energy') {
+          const res = ExcelReader.parseEnergyCalculationTable(ef.buffer, ym);
+          if (res && res.unitPriceYenPerKwh) {
+            electricity = res;
+            updateTagBadge('tagEnergy', true);
+          }
+        } else if (excelKind === 'pet') {
+          const res = ExcelReader.parsePetMonthlyReport(ef.buffer, ym);
+          if (res && (res.totalBottles > 0 || Object.keys(res.varieties).length > 0)) {
+            production = res;
+            updateTagBadge('tagPet', true);
+          }
+        }
+      } catch (err) {
+        console.warn(`Excel parse error for ${ym}:`, err);
+      }
+    }
+
+    return { production, electricity };
+  }
+
+  /**
    * 読み込み済みの全年月データセットに対して、外部Excelデータ（生産本数・単価）を再抽出し、KPIを再計算する
    */
   function recalculateAllLoadedMonths() {
@@ -1488,31 +1487,7 @@
       const ds = state.monthlyDatasets[ym];
       if (!ds) return;
 
-      let production = { totalBottles: 0, varieties: {} };
-      let electricity = { ...state.externalData.electricity };
-
-      if (state.loadedExcelFiles && state.loadedExcelFiles.length > 0) {
-        for (const ef of state.loadedExcelFiles) {
-          const lowerNorm = ef.name.toLowerCase();
-          try {
-            if (lowerNorm.includes('エネルギー') || lowerNorm.includes('かつらぎ') || lowerNorm.includes('energy')) {
-              const res = ExcelReader.parseEnergyCalculationTable(ef.buffer, ym);
-              if (res && res.unitPriceYenPerKwh) {
-                electricity = res;
-                updateTagBadge('tagEnergy', true);
-              }
-            } else if (lowerNorm.includes('月報') || lowerNorm.includes('pet')) {
-              const res = ExcelReader.parsePetMonthlyReport(ef.buffer, ym);
-              if (res && (res.totalBottles > 0 || Object.keys(res.varieties).length > 0)) {
-                production = res;
-                updateTagBadge('tagPet', true);
-              }
-            }
-          } catch (err) {
-            console.warn(`Excel recalculate error for ${ym}:`, err);
-          }
-        }
-      }
+      const { production, electricity } = extractExternalDataForMonth(ym);
 
       const kpiResult = KpiService.calculateKpi(
         ds.catResult.categoryMonthlyTotals,
@@ -1551,7 +1526,7 @@
     yms.forEach(ym => {
       const yr = parseInt(ym.slice(0, 4), 10);
       const mo = parseInt(ym.slice(4, 6), 10);
-      const fy = mo >= 4 ? yr : yr - 1;
+      const fy = AppConfig.getFiscalYear(yr, mo);
       detectedYearsSet.add(String(fy));
     });
 
@@ -1596,31 +1571,7 @@
         const catResult = CategoryService.aggregateCategories(aggResult.rows, aggResult.monthlyColumnSums);
 
         // 対象年月に応じた外部Excelデータを抽出
-        let production = { totalBottles: 0, varieties: {} };
-        let electricity = { ...state.externalData.electricity };
-
-        if (state.loadedExcelFiles && state.loadedExcelFiles.length > 0) {
-          for (const ef of state.loadedExcelFiles) {
-            const lowerNorm = ef.name.toLowerCase();
-            try {
-              if (lowerNorm.includes('エネルギー') || lowerNorm.includes('かつらぎ') || lowerNorm.includes('energy')) {
-                const res = ExcelReader.parseEnergyCalculationTable(ef.buffer, ym);
-                if (res && res.unitPriceYenPerKwh) {
-                  electricity = res;
-                  updateTagBadge('tagEnergy', true);
-                }
-              } else if (lowerNorm.includes('月報') || lowerNorm.includes('pet')) {
-                const res = ExcelReader.parsePetMonthlyReport(ef.buffer, ym);
-                if (res && (res.totalBottles > 0 || Object.keys(res.varieties).length > 0)) {
-                  production = res;
-                  updateTagBadge('tagPet', true);
-                }
-              }
-            } catch (err) {
-              console.warn(`Excel parse error for ${ym}:`, err);
-            }
-          }
-        }
+        const { production, electricity } = extractExternalDataForMonth(ym);
 
         const kpiResult = KpiService.calculateKpi(
           catResult.categoryMonthlyTotals,
@@ -1682,7 +1633,6 @@
       syncTargets = allTargetYms;
     }
 
-    const syncBtn = document.getElementById('syncBtn');
     if (syncBtn) syncBtn.disabled = true;
 
     const totalCount = syncTargets.length;
@@ -1875,7 +1825,7 @@
    */
   function buildLocalExportSheets() {
     const categories = (typeof AppConfig !== 'undefined' && AppConfig.CATEGORIES) || [];
-    const varietyKeys = (typeof AppConfig !== 'undefined' && AppConfig.VARIETY_KEYS) || ['2.0L', '1.5L', '1.0L', '600mL丸', '500mL丸', '500mL角', '350mL', '280mL'];
+    const varietyKeys = VARIETY_KEYS;
     const yms = Object.keys(state.monthlyDatasets || {}).sort();
 
     // 1. 日別集約
@@ -1963,6 +1913,14 @@
   }
 
   // 補助関数
+
+  /**
+   * 数値を3桁区切り・小数桁固定の文字列に整形する
+   */
+  function formatNumber(value, digits) {
+    return value.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  }
+
   function readFileAsText(file) {
     return new Promise(resolve => {
       try {

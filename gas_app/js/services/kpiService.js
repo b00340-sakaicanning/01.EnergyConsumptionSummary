@@ -6,12 +6,11 @@
 
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    const AppConfig = require('../config.js');
-    module.exports = factory(AppConfig);
+    module.exports = factory();
   } else {
-    root.KpiService = factory(root.AppConfig);
+    root.KpiService = factory();
   }
-}(typeof self !== 'undefined' ? self : this, function (AppConfig) {
+}(typeof self !== 'undefined' ? self : this, function () {
 
   /**
    * KPI評価指標を算出する

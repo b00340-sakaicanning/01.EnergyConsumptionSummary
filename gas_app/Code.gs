@@ -1,6 +1,6 @@
 /**
  * gas_app/Code.gs
- * エネルギー使用量集計システム GASバックエンド (doGet / doPost / スプレッドシート書き込み)
+ * エネルギー使用量集計システム GASバックエンド (doGet / スプレッドシートへの保存・復元・エクスポート用データ取得)
  */
 
 /**
@@ -12,95 +12,6 @@ function doGet(e) {
     .setTitle('エネルギー使用量集計システム')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
-
-/**
- * HTMLインクルード用ヘルパー
- * 拡張子 .html の自動補完、および <script> / <style> タグの自動付与に対応
- * （ファイル未検出時もクラッシュせず安全にフォールバック）
- */
-function include(filename) {
-  var content = '';
-  try {
-    try {
-      content = HtmlService.createHtmlOutputFromFile(filename).getContent();
-    } catch (e) {
-      if (filename.indexOf('.html') === -1) {
-        content = HtmlService.createHtmlOutputFromFile(filename + '.html').getContent();
-      } else {
-        throw e;
-      }
-    }
-  } catch (err) {
-    Logger.log('include warning for ' + filename + ': ' + err.message);
-    return '<!-- include skipped: ' + filename + ' -->';
-  }
-
-  var trimmed = content.trim();
-
-  // CSSファイルに自動 <style> タグ付与
-  if (filename.indexOf('css/') === 0 || filename.indexOf('.css') !== -1) {
-    if (trimmed.indexOf('<style') !== 0) {
-      return '<style>\n' + content + '\n</style>';
-    }
-  }
-
-  // JSファイルに自動 <script> タグ付与
-  if (filename.indexOf('js/') === 0 || filename.indexOf('.js') !== -1) {
-    if (trimmed.indexOf('<script') !== 0) {
-      return '<script>\n' + content + '\n</script>';
-    }
-  }
-
-  return content;
-}
-
-/**
- * Webアプリケーションのエントリポイント (POST)
- */
-function doPost(e) {
-  var lock = LockService.getScriptLock();
-  try {
-    // 同時実行ロック (最大30秒待機)
-    lock.waitLock(30000);
-
-    var postData = "";
-    if (e && e.postData && e.postData.contents) {
-      postData = e.postData.contents;
-    } else if (e && e.parameter && e.parameter.data) {
-      postData = e.parameter.data;
-    }
-
-    if (!postData) {
-      return createJsonResponse({ success: false, error: 'No data received' });
-    }
-
-    var payload = JSON.parse(postData);
-    var action = payload.action || 'saveAggregatedData';
-
-    if (action === 'saveAggregatedData') {
-      var result = saveAggregatedData(payload);
-      return createJsonResponse({ success: true, result: result });
-    } else if (action === 'initSpreadsheet') {
-      var initResult = setupSheets();
-      return createJsonResponse({ success: true, result: initResult });
-    } else {
-      return createJsonResponse({ success: false, error: 'Unknown action: ' + action });
-    }
-
-  } catch (err) {
-    return createJsonResponse({ success: false, error: err.message, stack: err.stack });
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-/**
- * JSONレスポンスの生成
- */
-function createJsonResponse(data) {
-  return ContentService.createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
 }
 
 /**
@@ -149,7 +60,6 @@ function saveAggregatedData(payload) {
   if (hourlyRows.length > 0) {
     var sheetHourly = ss.getSheetByName(CONFIG.SHEET_NAMES.HOURLY);
     var cols = CONFIG.COLUMNS; // 90列
-    var lastRow = sheetHourly.getLastRow();
 
     // 全行を2次元配列に構築
     var allBlockRows = [];
@@ -173,32 +83,9 @@ function saveAggregatedData(payload) {
       allBlockRows.push(rowValues);
     }
 
-    // 既存の日時キーを探索して開始行を特定
-    var ymPrefix = '';
-    if (yearMonth && yearMonth.length === 6) {
-      ymPrefix = yearMonth.slice(0, 4) + '/' + yearMonth.slice(4, 6) + '/';
-    }
-
-    var existingStartRow = -1;
-    if (lastRow >= 2) {
-      var dateValues = sheetHourly.getRange(2, 1, lastRow - 1, 1).getValues();
-      for (var r = 0; r < dateValues.length; r++) {
-        var cellVal = formatDateCell(dateValues[r][0]);
-        if (ymPrefix && cellVal.indexOf(ymPrefix) === 0) {
-          existingStartRow = r + 2;
-          break;
-        }
-      }
-    }
-
-    if (existingStartRow > 0) {
-      // 既存月の開始行から一括ブロック上書き (API呼び出し1回で720行を瞬時更新)
-      sheetHourly.getRange(existingStartRow, 1, allBlockRows.length, allBlockRows[0].length).setValues(allBlockRows);
+    if (writeMonthBlock(sheetHourly, allBlockRows, yearMonth)) {
       updatedCount = allBlockRows.length;
     } else {
-      // 末尾に一括ブロック追記 (ヘッダー1行目のため最小開始行は2)
-      var targetRow = Math.max(lastRow + 1, 2);
-      sheetHourly.getRange(targetRow, 1, allBlockRows.length, allBlockRows[0].length).setValues(allBlockRows);
       appendedCount = allBlockRows.length;
     }
   }
@@ -256,7 +143,20 @@ function saveDailySummary(ss, dailyTotals, yearMonth) {
 
   if (outputRows.length === 0) return;
 
-  var lastRow = sheetDaily.getLastRow();
+  writeMonthBlock(sheetDaily, outputRows, yearMonth);
+}
+
+/**
+ * 月ブロック (同じ年月の行のまとまり) をシートへ一括で書き込む
+ * A列が対象年月で始まる最初の行があればその位置から上書きし、無ければ末尾へ追記する
+ * (API呼び出し1回で1か月分を更新する。同じ月の行が連続し、行数が変わらないことが前提)
+ * @param {Sheet} sheet 書き込み先シート (1行目はヘッダー)
+ * @param {Array<Array>} rows 書き込む行データ (1行以上)
+ * @param {string} yearMonth 'YYYYMM'
+ * @returns {boolean} 既存月を上書きした場合は true、末尾へ追記した場合は false
+ */
+function writeMonthBlock(sheet, rows, yearMonth) {
+  var lastRow = sheet.getLastRow();
   var ymPrefix = '';
   if (yearMonth && yearMonth.length === 6) {
     ymPrefix = yearMonth.slice(0, 4) + '/' + yearMonth.slice(4, 6) + '/';
@@ -264,7 +164,7 @@ function saveDailySummary(ss, dailyTotals, yearMonth) {
 
   var existingStartRow = -1;
   if (lastRow >= 2) {
-    var dateValues = sheetDaily.getRange(2, 1, lastRow - 1, 1).getValues();
+    var dateValues = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
     for (var r = 0; r < dateValues.length; r++) {
       var cellVal = formatDateCell(dateValues[r][0]);
       if (ymPrefix && cellVal.indexOf(ymPrefix) === 0) {
@@ -274,13 +174,35 @@ function saveDailySummary(ss, dailyTotals, yearMonth) {
     }
   }
 
-  if (existingStartRow > 0) {
-    // 既存月の位置へ一括上書き
-    sheetDaily.getRange(existingStartRow, 1, outputRows.length, outputRows[0].length).setValues(outputRows);
+  // ヘッダーが1行目のため、追記時の最小開始行は2
+  var targetRow = existingStartRow > 0 ? existingStartRow : Math.max(lastRow + 1, 2);
+  sheet.getRange(targetRow, 1, rows.length, rows[0].length).setValues(rows);
+  return existingStartRow > 0;
+}
+
+/**
+ * 対象年月をキーに1行を書き込む (A列が一致する行があれば上書き、無ければ末尾へ追記)
+ * @param {Sheet} sheet 書き込み先シート (1行目はヘッダー、A列が対象年月)
+ * @param {string} yearMonth 'YYYYMM'
+ * @param {Array} newRow 書き込む1行分のデータ
+ */
+function upsertRowByYearMonth(sheet, yearMonth, newRow) {
+  var lastRow = sheet.getLastRow();
+  var targetRow = -1;
+  if (lastRow >= 2) {
+    var ymValues = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (var r = 0; r < ymValues.length; r++) {
+      if (String(ymValues[r][0] || '').trim() === String(yearMonth).trim()) {
+        targetRow = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (targetRow > 0) {
+    sheet.getRange(targetRow, 1, 1, newRow.length).setValues([newRow]);
   } else {
-    // 末尾へ一括追記
-    var nextRow = Math.max(lastRow + 1, 2);
-    sheetDaily.getRange(nextRow, 1, outputRows.length, outputRows[0].length).setValues(outputRows);
+    sheet.appendRow(newRow);
   }
 }
 
@@ -290,13 +212,9 @@ function saveDailySummary(ss, dailyTotals, yearMonth) {
 function saveVarietySummary(ss, yearMonth, varietyData) {
   if (!yearMonth) return;
   var sheetVariety = ss.getSheetByName(CONFIG.SHEET_NAMES.VARIETY);
-  if (!sheetVariety) {
-    setupSheets(ss);
-    sheetVariety = ss.getSheetByName(CONFIG.SHEET_NAMES.VARIETY);
-  }
   if (!sheetVariety) return;
 
-  var keys = CONFIG.VARIETY_KEYS || ['2.0L', '1.5L', '1.0L', '600mL丸', '500mL丸', '500mL角', '350mL', '280mL'];
+  var keys = CONFIG.VARIETY_KEYS;
   var bottles = (varietyData && varietyData.bottles) || {};
   var fKwh = (varietyData && (varietyData.fillingPowerKwh || varietyData.powerKwh)) || {};
   var wKwh = (varietyData && varietyData.waterPowerKwh) || {};
@@ -310,23 +228,7 @@ function saveVarietySummary(ss, yearMonth, varietyData) {
   for (var i = 0; i < keys.length; i++) newRow.push(Math.round(parseFloat(fMins[keys[i]]) || 0));
   for (var i = 0; i < keys.length; i++) newRow.push(Math.round(parseFloat(wMins[keys[i]]) || 0));
 
-  var lastRow = sheetVariety.getLastRow();
-  var targetRow = -1;
-  if (lastRow >= 2) {
-    var ymValues = sheetVariety.getRange(2, 1, lastRow - 1, 1).getValues();
-    for (var r = 0; r < ymValues.length; r++) {
-      if (String(ymValues[r][0] || '').trim() === String(yearMonth).trim()) {
-        targetRow = r + 2;
-        break;
-      }
-    }
-  }
-
-  if (targetRow > 0) {
-    sheetVariety.getRange(targetRow, 1, 1, newRow.length).setValues([newRow]);
-  } else {
-    sheetVariety.appendRow(newRow);
-  }
+  upsertRowByYearMonth(sheetVariety, yearMonth, newRow);
 }
 
 /**
@@ -337,8 +239,6 @@ function saveKpiSummary(ss, yearMonth, kpi) {
   var evalData = kpi.evaluation || {};
 
   var combined = evalData.combined || {};
-  var water = evalData.waterOnly || {};
-  var fill = evalData.fillingOnly || {};
 
   var newRow = [
     yearMonth,
@@ -351,23 +251,7 @@ function saveKpiSummary(ss, yearMonth, kpi) {
     kpi.electricitySummary ? kpi.electricitySummary.unitPriceYenPerKwh : 0
   ];
 
-  var lastRow = sheetKpi.getLastRow();
-  var targetRow = -1;
-  if (lastRow >= 2) {
-    var ymValues = sheetKpi.getRange(2, 1, lastRow - 1, 1).getValues();
-    for (var r = 0; r < ymValues.length; r++) {
-      if (String(ymValues[r][0] || '').trim() === String(yearMonth).trim()) {
-        targetRow = r + 2;
-        break;
-      }
-    }
-  }
-
-  if (targetRow > 0) {
-    sheetKpi.getRange(targetRow, 1, 1, newRow.length).setValues([newRow]);
-  } else {
-    sheetKpi.appendRow(newRow);
-  }
+  upsertRowByYearMonth(sheetKpi, yearMonth, newRow);
 }
 
 /**
@@ -424,7 +308,7 @@ function setupSheets(ss) {
 
   // 4. 品種別集約 (実充填・水運転・合算の3モード完全分離対応)
   var sVariety = ss.getSheetByName(sheetNames.VARIETY);
-  var vKeys = CONFIG.VARIETY_KEYS || ['2.0L', '1.5L', '1.0L', '600mL丸', '500mL丸', '500mL角', '350mL', '280mL'];
+  var vKeys = CONFIG.VARIETY_KEYS;
   var vHeader = ['対象年月'];
   for (var vk = 0; vk < vKeys.length; vk++) vHeader.push(vKeys[vk] + ' (本)');
   for (var vk = 0; vk < vKeys.length; vk++) vHeader.push(vKeys[vk] + ' 実充填(kWh)');
@@ -457,6 +341,21 @@ function getSpreadsheet() {
 }
 
 /**
+ * 復元用サマリーに対象年月の入れ物が無ければ、初期値で作成する
+ * @param {Object} monthlySummary { [ym]: {...} }
+ * @param {string} ym 'YYYYMM'
+ */
+function ensureMonthlySummary(monthlySummary, ym) {
+  if (monthlySummary[ym]) return;
+  monthlySummary[ym] = {
+    ym: ym,
+    catResult: { categoryMonthlyTotals: {}, categoryDailyTotals: [], monthlyOperationTimes: { waterTimeMin: 0, actualFillingMin: 0 } },
+    kpiResult: null,
+    externalData: { production: { totalBottles: 0, varieties: {} }, electricity: { unitPriceYenPerKwh: 20.0 } }
+  };
+}
+
+/**
  * スプレッドシートに保存された集約データ（日別集約シート、品種別集約シートおよびKPI評価シート）を読み込み、
  * クライアントの state.monthlyDatasets 復元用サマリーを返す
  */
@@ -481,14 +380,7 @@ function loadSavedSummaryFromSpreadsheet() {
         if (!ym || ym.length !== 6) continue;
 
         savedYmsSet[ym] = true;
-        if (!monthlySummary[ym]) {
-          monthlySummary[ym] = {
-            ym: ym,
-            catResult: { categoryMonthlyTotals: {}, categoryDailyTotals: [], monthlyOperationTimes: { waterTimeMin: 0, actualFillingMin: 0 } },
-            kpiResult: null,
-            externalData: { production: { totalBottles: 0, varieties: {} }, electricity: { unitPriceYenPerKwh: 20.0 } }
-          };
-        }
+        ensureMonthlySummary(monthlySummary, ym);
 
         var totKwh = parseFloat(row[1]) || 0;
         var opMin = parseFloat(row[2]) || 0;
@@ -539,18 +431,7 @@ function loadSavedSummaryFromSpreadsheet() {
         var ym = parts[0] + parts[1].padStart(2, '0');
 
         savedYmsSet[ym] = true;
-        if (!monthlySummary[ym]) {
-          monthlySummary[ym] = {
-            ym: ym,
-            catResult: { categoryMonthlyTotals: {}, monthlyOperationTimes: { waterTimeMin: 0, actualFillingMin: 0 } },
-            kpiResult: null,
-            externalData: { production: { totalBottles: 0, varieties: {} }, electricity: { unitPriceYenPerKwh: 20.0 } }
-          };
-        }
-
-        if (!monthlySummary[ym].catResult.categoryDailyTotals) {
-          monthlySummary[ym].catResult.categoryDailyTotals = [];
-        }
+        ensureMonthlySummary(monthlySummary, ym);
 
         var catTotals = monthlySummary[ym].catResult.categoryMonthlyTotals;
         var dayNum = parseInt(dRow[1], 10) || (parts.length >= 3 ? parseInt(parts[2], 10) : 1);
@@ -587,7 +468,7 @@ function loadSavedSummaryFromSpreadsheet() {
     // 3. 品種別集約シートの読み込み (実充填・水運転・合算の完全分離復元)
     var sheetVariety = ss.getSheetByName(CONFIG.SHEET_NAMES.VARIETY);
     if (sheetVariety && sheetVariety.getLastRow() >= 2) {
-      var vKeys = CONFIG.VARIETY_KEYS || ['2.0L', '1.5L', '1.0L', '600mL丸', '500mL丸', '500mL角', '350mL', '280mL'];
+      var vKeys = CONFIG.VARIETY_KEYS;
       var lastCol = sheetVariety.getLastColumn();
       var vData = sheetVariety.getRange(2, 1, sheetVariety.getLastRow() - 1, lastCol).getValues();
 
@@ -597,14 +478,7 @@ function loadSavedSummaryFromSpreadsheet() {
         if (!ym || ym.length !== 6) continue;
 
         savedYmsSet[ym] = true;
-        if (!monthlySummary[ym]) {
-          monthlySummary[ym] = {
-            ym: ym,
-            catResult: { categoryMonthlyTotals: {}, categoryDailyTotals: [], monthlyOperationTimes: { waterTimeMin: 0, actualFillingMin: 0 } },
-            kpiResult: null,
-            externalData: { production: { totalBottles: 0, varieties: {} }, electricity: { unitPriceYenPerKwh: 20.0 } }
-          };
-        }
+        ensureMonthlySummary(monthlySummary, ym);
 
         var vBottles = {};
         var vFillingPower = {};

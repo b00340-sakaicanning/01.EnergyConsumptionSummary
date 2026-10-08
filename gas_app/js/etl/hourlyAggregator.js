@@ -130,9 +130,6 @@
       // 稼働モード分数のカウントおよび最頻品種コードの特定
       let waterTimeMin = 0;
       let actualFillingMin = 0;
-      let cipMin = 0;
-      let sipMin = 0;
-      let otherMin = 0;
 
       const varietyCounts = {};
       for (const rec of bucket.minuteRecords) {
@@ -142,9 +139,6 @@
           const catCode = stepInfo ? stepInfo.code : 0;
           if (catCode === 20) waterTimeMin++;
           else if (catCode === 30) actualFillingMin++;
-          else if (catCode === 40) cipMin++;
-          else if (catCode === 10) sipMin++;
-          else otherMin++;
         }
 
         const vVal = rec['variety'];
@@ -161,8 +155,6 @@
           dominantVariety = parseInt(v, 10);
         }
       }
-
-      const dominantStepCode = actualFillingMin > 0 ? 30 : (waterTimeMin > 0 ? 20 : 0);
 
       // 各電力列の計算
       for (const col of columnKeys) {
@@ -206,21 +198,15 @@
 
       hourlyRows.push({
         hourIndex: bucket.hourIndex,
-        rowNumber: bucket.hourIndex + 10,
         timestampKey: bucket.timestampKey,
         date: bucket.dateStr,
         hour: bucket.hour,
-        validMinuteCount: count,
         isInterpolated,
         varietyCode: dominantVariety,
-        stepCode: dominantStepCode,
         values: rowValues,
         operationTimes: {
           waterTimeMin,
-          actualFillingMin,
-          cipMin,
-          sipMin,
-          otherMin
+          actualFillingMin
         }
       });
     }

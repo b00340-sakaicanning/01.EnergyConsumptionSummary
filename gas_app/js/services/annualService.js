@@ -13,7 +13,7 @@
   }
 }(typeof self !== 'undefined' ? self : this, function (config) {
 
-  const { VARIETY_GROUPS, EVALUATION_METRICS, OPERATION_MODES } = config;
+  const { VARIETY_GROUPS, EVALUATION_METRICS } = config;
 
   /**
    * 年間12ヶ月の年月リスト (4月〜翌年3月) を生成
@@ -21,14 +21,7 @@
    * @returns {Array} ['202404', '202405', ..., '202503']
    */
   function getFiscalMonths(fiscalYear) {
-    const months = [];
-    for (let m = 4; m <= 12; m++) {
-      months.push(`${fiscalYear}${String(m).padStart(2, '0')}`);
-    }
-    for (let m = 1; m <= 3; m++) {
-      months.push(`${fiscalYear + 1}${String(m).padStart(2, '0')}`);
-    }
-    return months;
+    return config.FISCAL_MONTH_ORDER.map(m => `${m >= 4 ? fiscalYear : fiscalYear + 1}${String(m).padStart(2, '0')}`);
   }
 
   /**
@@ -137,7 +130,7 @@
     const dataset = {
       fiscalYear,
       months, // ['202404', ... '202503']
-      monthLabels: ['4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月', '1月', '2月', '3月'],
+      monthLabels: config.FISCAL_MONTH_LABELS.slice(),
       unitPrices: {}, // '202404': 19.36, etc.
       modes: {
         combined: createEmptyModeTable(months),
@@ -187,7 +180,7 @@
   function buildAnnualDataset(fiscalYear, monthlyDatasets = {}) {
     const fYear = parseInt(fiscalYear, 10);
     const months = getFiscalMonths(fYear);
-    const monthLabels = ['4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月', '1月', '2月', '3月'];
+    const monthLabels = config.FISCAL_MONTH_LABELS.slice();
 
     const annualDataset = createEmptyAnnualDataset(fYear);
     annualDataset.fiscalYear = fYear;
@@ -195,10 +188,7 @@
     annualDataset.monthLabels = monthLabels;
 
     const unitPrices = {};
-    const equipmentCats = [
-      '総電力', 'ユーティリティ', 'コンプレッサー', 'ボイラー',
-      '純水装置', '排水処理', 'チラー', '調合抽出', '供給', '充填', '包装'
-    ];
+    const equipmentCats = config.CATEGORIES.map(c => c.name);
 
     const equipmentSummary = {
       months: months,

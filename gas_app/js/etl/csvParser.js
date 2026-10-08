@@ -81,7 +81,6 @@
     const kwColIndices = [];
     let varietyColIdx = -1;
     let stepColIdx = -1;
-    let operationColIdx = -1;
 
     for (let c = 0; c < unitRow.length; c++) {
       const unit = (unitRow[c] || '').replace(/"/g, '').trim().toLowerCase();
@@ -92,8 +91,6 @@
           varietyColIdx = c;
         } else if (colName.includes('ステップ')) {
           stepColIdx = c;
-        } else if (colName.includes('運転')) {
-          operationColIdx = c;
         }
       }
 
@@ -138,7 +135,6 @@
       if (tagType === 'tag02') {
         if (varietyColIdx >= 0) rowObj['variety'] = cols[varietyColIdx] ? parseInt(cols[varietyColIdx], 10) : null;
         if (stepColIdx >= 0) rowObj['step'] = cols[stepColIdx] ? parseInt(cols[stepColIdx], 10) : null;
-        if (operationColIdx >= 0) rowObj['operation'] = cols[operationColIdx] ? parseInt(cols[operationColIdx], 10) : null;
       }
 
       for (const mapping of columnMappings) {

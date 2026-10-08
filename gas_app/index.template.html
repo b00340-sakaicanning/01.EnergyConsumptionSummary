@@ -10,17 +10,12 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
 
-  <!-- 外部CDNライブラリ (PapaParse, SheetJS, Chart.js) -->
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <!-- 外部CDNライブラリ (SheetJS, Chart.js) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- CSSスタイル -->
   <link rel="stylesheet" href="css/style.css?v=20261004_2">
-  <style>
-    /* GAS環境でのincludeフォールバック */
-    <?!= include('css/style'); ?>
-  </style>
 </head>
 <body>
 
@@ -580,18 +575,8 @@
     </div>
   </div>
 
-  <!-- スクリプト読み込み (GAS環境用インクルード) -->
-  <?!= include('js/config'); ?>
-  <?!= include('js/etl/csvParser'); ?>
-  <?!= include('js/etl/hourlyAggregator'); ?>
-  <?!= include('js/etl/excelReader'); ?>
-  <?!= include('js/services/categoryService'); ?>
-  <?!= include('js/services/kpiService'); ?>
-  <?!= include('js/services/annualService'); ?>
-  <?!= include('js/components/charts'); ?>
-  <?!= include('js/app'); ?>
-
-  <!-- ローカル開発環境用フォールバック (GAS環境では上記でロード済みのため二重ロードを防止) -->
+  <!-- スクリプト読み込み (この行から body 終了タグまでは build.js が全JSのインライン統合に置き換える) -->
+  <!-- 以下は、このテンプレートをローカルで直接開いた場合の読み込み処理 -->
   <script>
     if (typeof AppConfig === 'undefined') {
       var scripts = [

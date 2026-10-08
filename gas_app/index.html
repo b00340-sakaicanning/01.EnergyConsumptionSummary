@@ -10,8 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
 
-  <!-- 外部CDNライブラリ (PapaParse, SheetJS, Chart.js) -->
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <!-- 外部CDNライブラリ (SheetJS, Chart.js) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
@@ -30,32 +29,17 @@
   --primary-gradient: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
   
   --secondary: #475569;         /* Slate-600 */
-  --secondary-hover: #334155;   /* Slate-700 */
   --secondary-light: #f1f5f9;   /* Slate-100 */
-  
+
   --success: #10b981;           /* Emerald-500 */
   --success-light: #d1fae5;     /* Emerald-100 */
   --warning: #f59e0b;           /* Amber-500 */
-  --warning-light: #fef3c7;     /* Amber-100 */
   --danger: #ef4444;            /* Red-500 */
-  --danger-light: #fee2e2;      /* Red-100 */
-
-  /* 品種分類別カラー (Excel原紙準拠の識別色) */
-  --color-20L: #2563eb;         /* 2.0L: Royal Blue */
-  --color-15L: #0891b2;         /* 1.5L: Cyan */
-  --color-10L: #059669;         /* 1.0L: Emerald */
-  --color-600R: #65a30d;        /* 600mL丸: Lime */
-  --color-500R: #d97706;        /* 500mL丸: Amber */
-  --color-500S: #ea580c;        /* 500mL角: Orange */
-  --color-350: #7c3aed;         /* 350mL: Purple */
-  --color-280: #db2777;         /* 280mL: Pink */
-  --color-monthly: #1e293b;     /* 月計: Slate-800 */
 
   /* 背景・カード・ボーダー・テキスト */
   --bg-page: #f8fafc;
   --bg-card: #ffffff;
   --border: #e2e8f0;
-  --border-focus: #38bdf8;
   --text-main: #0f172a;
   --text-muted: #64748b;
   --text-light: #94a3b8;
@@ -489,10 +473,6 @@ button, input, select {
   grid-template-columns: 2fr 1fr;
   gap: 1.25rem;
   margin-bottom: 1.25rem;
-}
-
-.chart-grid.single {
-  grid-template-columns: 1fr;
 }
 
 .chart-card {
@@ -1691,6 +1671,9 @@ button, input, select {
     { key: '280mL', name: '280ｍL', capacityL: 0.28, bpm: 500, codes: [110], color: '#db2777' }
   ];
 
+  // 品種8大分類キー (表示・集計の並び順)
+  const VARIETY_KEYS = VARIETY_GROUPS.map(g => g.key);
+
   /**
    * 品種合算マッピング設定
    * 8大分類キーに対して、月報Excel（月報PET）内のどの品種を紐付けて合算するかを定義
@@ -1718,12 +1701,19 @@ button, input, select {
     { key: 'costPerMinute', name: '単位時間コスト', unit: '円/分', digits: 2 }
   ];
 
-  // 操業評価モード
-  const OPERATION_MODES = [
-    { key: 'combined', name: '水運転＋実充填', stepCodes: [20, 30] },
-    { key: 'waterOnly', name: '水運転のみ', stepCodes: [20] },
-    { key: 'fillingOnly', name: '実充填のみ', stepCodes: [30] }
-  ];
+  // 原単位・平均系の指標 (単位本、単位時間)。総量系と違い、積み上げ・累計の対象にならない
+  const RATE_METRIC_KEYS = ['kwhPerBottle', 'costPerBottle', 'kwhPerMinute', 'costPerMinute'];
+
+  // 年度 (4月〜翌3月) の月の並び
+  const FISCAL_MONTH_ORDER = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
+  const FISCAL_MONTH_LABELS = FISCAL_MONTH_ORDER.map(m => `${m}月`);
+
+  /**
+   * 暦年・月から年度を求める (4月〜12月: 当年、1月〜3月: 前年)
+   */
+  function getFiscalYear(year, month) {
+    return month >= 4 ? year : year - 1;
+  }
 
   // ステップマスター (工程分類) - 原紙Excel「ステップ」シート準拠 (全57件)
   const STEP_MASTER = {
@@ -1827,107 +1817,113 @@ button, input, select {
   // tag: タグ種別, kwIndex: 各タグ内のkW列出現順序(0始まり), fixedVal: 固定値(未計測盤)
   const EQUIPMENT_COLUMNS = [
     // tag04 (コンプレッサー No1〜No3)
-    { col: 'D', tag: 'tag04', kwIndex: 0, label: 'コンプレッサー No1', category: 'total' },
-    { col: 'E', tag: 'tag04', kwIndex: 1, label: 'コンプレッサー No2', category: 'total' },
-    { col: 'F', tag: 'tag04', kwIndex: 2, label: 'コンプレッサー No3', category: 'total' },
+    { col: 'D', tag: 'tag04', kwIndex: 0, label: 'コンプレッサー No1' },
+    { col: 'E', tag: 'tag04', kwIndex: 1, label: 'コンプレッサー No2' },
+    { col: 'F', tag: 'tag04', kwIndex: 2, label: 'コンプレッサー No3' },
 
     // tag05 (1021-1109)
-    { col: 'G', tag: 'tag05', kwIndex: 0, label: '1F 低圧動力盤 №1 AMPAC', category: 'total' },
-    { col: 'H', tag: 'tag05', kwIndex: 1, label: '1F 低圧動力盤 №2 ｺﾝﾌﾟﾚｯｻｰ制御盤', category: 'total' },
-    { col: 'I', tag: 'tag05', kwIndex: 2, label: '井水純水制御盤', category: 'total' },
-    { col: 'J', tag: 'tag05', kwIndex: 3, label: '排水処理制御盤', category: 'total' },
-    { col: 'K', tag: 'tag05', kwIndex: 4, label: 'ﾎﾞｲﾗｰ制御盤', category: 'total' },
-    { col: 'L', tag: 'tag05', kwIndex: 5, label: 'ｶｯﾌﾟ殺菌制御盤', category: 'total' },
-    { col: 'M', tag: null, fixedVal: 0.0, label: '消火ﾎﾟﾝﾌﾟ盤', category: 'total' },
-    { col: 'N', tag: 'tag05', kwIndex: 6, label: '排水処理棟 原水ﾎﾟﾝﾌﾟ1号', category: 'total' },
-    { col: 'O', tag: 'tag05', kwIndex: 7, label: '排水処理棟 原水ﾎﾟﾝﾌﾟ2号', category: 'total' },
-    { col: 'P', tag: 'tag05', kwIndex: 8, label: '排水処理棟 調整ﾎﾟﾝﾌﾟ1号', category: 'total' },
-    { col: 'Q', tag: 'tag05', kwIndex: 9, label: '排水処理棟 調整ﾎﾟﾝﾌﾟ2号', category: 'total' },
-    { col: 'R', tag: 'tag05', kwIndex: 10, label: '排水処理棟 暖気ﾌﾞﾛｱ1号', category: 'total' },
-    { col: 'S', tag: 'tag05', kwIndex: 11, label: '排水処理棟 暖気ﾌﾞﾛｱ2号', category: 'total' },
-    { col: 'T', tag: 'tag05', kwIndex: 12, label: '排水処理棟 流量調整槽ﾌﾞﾛｱ', category: 'total' },
-    { col: 'U', tag: 'tag05', kwIndex: 13, label: '排水処理棟 沈殿槽分配ﾎﾟﾝﾌﾟ1号', category: 'total' },
-    { col: 'V', tag: 'tag05', kwIndex: 14, label: '排水処理棟 沈殿槽分配ﾎﾟﾝﾌﾟ2号', category: 'total' },
-    { col: 'W', tag: 'tag05', kwIndex: 15, label: '純水装置1号盤 井戸ﾎﾟﾝﾌﾟA', category: 'total' },
-    { col: 'X', tag: 'tag05', kwIndex: 16, label: '純水装置1号盤 井戸ﾎﾟﾝﾌﾟB', category: 'total' },
-    { col: 'Y', tag: 'tag05', kwIndex: 17, label: '純水装置1号盤 ろ過原水ﾎﾟﾝﾌﾟ', category: 'total' },
-    { col: 'Z', tag: 'tag05', kwIndex: 18, label: '純水装置1号盤 中継ﾎﾟﾝﾌﾟ', category: 'total' },
-    { col: 'AA', tag: 'tag05', kwIndex: 19, label: '純水装置1号盤 原水送水ﾎﾟﾝﾌﾟ', category: 'total' },
-    { col: 'AB', tag: 'tag05', kwIndex: 20, label: '純水装置1号盤 純水送水ﾎﾟﾝﾌﾟ', category: 'total' },
-    { col: 'AC', tag: 'tag05', kwIndex: 21, label: '純水装置1号盤 上水低圧ﾎﾟﾝﾌﾟ', category: 'total' },
-    { col: 'AD', tag: 'tag05', kwIndex: 22, label: '純水装置1号盤 ﾊﾟｽﾄﾗﾎﾟﾝﾌﾟ', category: 'total' },
-    { col: 'AE', tag: 'tag05', kwIndex: 23, label: '純水装置1号盤 駆動水ﾎﾟﾝﾌﾟ', category: 'total' },
-    { col: 'AF', tag: 'tag05', kwIndex: 24, label: '純水装置1号盤 UV殺菌器', category: 'total' },
-    { col: 'AG', tag: 'tag05', kwIndex: 25, label: '純水装置2号盤 2号中継ﾎﾟﾝﾌﾟゴウ', category: 'total' },
-    { col: 'AH', tag: 'tag05', kwIndex: 26, label: '純水装置2号盤 2号ろ過原水ﾎﾟﾝﾌﾟ', category: 'total' },
-    { col: 'AI', tag: 'tag05', kwIndex: 27, label: '純水装置2号盤 2号駆動水ﾎﾟﾝﾌﾟ', category: 'total' },
+    { col: 'G', tag: 'tag05', kwIndex: 0, label: '1F 低圧動力盤 №1 AMPAC' },
+    { col: 'H', tag: 'tag05', kwIndex: 1, label: '1F 低圧動力盤 №2 ｺﾝﾌﾟﾚｯｻｰ制御盤' },
+    { col: 'I', tag: 'tag05', kwIndex: 2, label: '井水純水制御盤' },
+    { col: 'J', tag: 'tag05', kwIndex: 3, label: '排水処理制御盤' },
+    { col: 'K', tag: 'tag05', kwIndex: 4, label: 'ﾎﾞｲﾗｰ制御盤' },
+    { col: 'L', tag: 'tag05', kwIndex: 5, label: 'ｶｯﾌﾟ殺菌制御盤' },
+    { col: 'M', tag: null, fixedVal: 0.0, label: '消火ﾎﾟﾝﾌﾟ盤' },
+    { col: 'N', tag: 'tag05', kwIndex: 6, label: '排水処理棟 原水ﾎﾟﾝﾌﾟ1号' },
+    { col: 'O', tag: 'tag05', kwIndex: 7, label: '排水処理棟 原水ﾎﾟﾝﾌﾟ2号' },
+    { col: 'P', tag: 'tag05', kwIndex: 8, label: '排水処理棟 調整ﾎﾟﾝﾌﾟ1号' },
+    { col: 'Q', tag: 'tag05', kwIndex: 9, label: '排水処理棟 調整ﾎﾟﾝﾌﾟ2号' },
+    { col: 'R', tag: 'tag05', kwIndex: 10, label: '排水処理棟 暖気ﾌﾞﾛｱ1号' },
+    { col: 'S', tag: 'tag05', kwIndex: 11, label: '排水処理棟 暖気ﾌﾞﾛｱ2号' },
+    { col: 'T', tag: 'tag05', kwIndex: 12, label: '排水処理棟 流量調整槽ﾌﾞﾛｱ' },
+    { col: 'U', tag: 'tag05', kwIndex: 13, label: '排水処理棟 沈殿槽分配ﾎﾟﾝﾌﾟ1号' },
+    { col: 'V', tag: 'tag05', kwIndex: 14, label: '排水処理棟 沈殿槽分配ﾎﾟﾝﾌﾟ2号' },
+    { col: 'W', tag: 'tag05', kwIndex: 15, label: '純水装置1号盤 井戸ﾎﾟﾝﾌﾟA' },
+    { col: 'X', tag: 'tag05', kwIndex: 16, label: '純水装置1号盤 井戸ﾎﾟﾝﾌﾟB' },
+    { col: 'Y', tag: 'tag05', kwIndex: 17, label: '純水装置1号盤 ろ過原水ﾎﾟﾝﾌﾟ' },
+    { col: 'Z', tag: 'tag05', kwIndex: 18, label: '純水装置1号盤 中継ﾎﾟﾝﾌﾟ' },
+    { col: 'AA', tag: 'tag05', kwIndex: 19, label: '純水装置1号盤 原水送水ﾎﾟﾝﾌﾟ' },
+    { col: 'AB', tag: 'tag05', kwIndex: 20, label: '純水装置1号盤 純水送水ﾎﾟﾝﾌﾟ' },
+    { col: 'AC', tag: 'tag05', kwIndex: 21, label: '純水装置1号盤 上水低圧ﾎﾟﾝﾌﾟ' },
+    { col: 'AD', tag: 'tag05', kwIndex: 22, label: '純水装置1号盤 ﾊﾟｽﾄﾗﾎﾟﾝﾌﾟ' },
+    { col: 'AE', tag: 'tag05', kwIndex: 23, label: '純水装置1号盤 駆動水ﾎﾟﾝﾌﾟ' },
+    { col: 'AF', tag: 'tag05', kwIndex: 24, label: '純水装置1号盤 UV殺菌器' },
+    { col: 'AG', tag: 'tag05', kwIndex: 25, label: '純水装置2号盤 2号中継ﾎﾟﾝﾌﾟゴウ' },
+    { col: 'AH', tag: 'tag05', kwIndex: 26, label: '純水装置2号盤 2号ろ過原水ﾎﾟﾝﾌﾟ' },
+    { col: 'AI', tag: 'tag05', kwIndex: 27, label: '純水装置2号盤 2号駆動水ﾎﾟﾝﾌﾟ' },
 
     // tag06 (1110-1209: 45列)
-    { col: 'AJ', tag: 'tag06', kwIndex: 0, label: '屋上 屋上室外機', category: 'total' },
-    { col: 'AK', tag: 'tag06', kwIndex: 1, label: '屋上 ﾁﾗｰ', category: 'chiller' },
-    { col: 'AL', tag: 'tag06', kwIndex: 2, label: '屋上 屋上室外機ACP-C', category: 'total' },
-    { col: 'AM', tag: 'tag06', kwIndex: 3, label: '屋上 屋上冷水2次ﾎﾟﾝﾌﾟ(生産用)', category: 'total' },
-    { col: 'AN', tag: 'tag06', kwIndex: 4, label: '抽出室 ﾙｰﾂﾌﾞﾛｱ', category: 'mixing' },
-    { col: 'AO', tag: 'tag06', kwIndex: 5, label: '抽出室 ﾛｰﾀﾘｰﾊﾞﾙﾌﾞ', category: 'mixing' },
-    { col: 'AP', tag: 'tag06', kwIndex: 6, label: '抽出室 粕搬送ｺﾝﾍﾞｱ抽出器下', category: 'supply' },
-    { col: 'AQ', tag: 'tag06', kwIndex: 7, label: '抽出室 粕搬送ｺﾝﾍﾞｱ合流CV', category: 'supply' },
-    { col: 'AR', tag: 'tag06', kwIndex: 8, label: '抽出室 粕搬送CV(ﾆｰﾀﾞｰ用)', category: 'supply' },
-    { col: 'AS', tag: 'tag06', kwIndex: 9, label: '抽出室 屋外振分ｽｸﾘｭｰ', category: 'supply' },
-    { col: 'AT', tag: 'tag06', kwIndex: 10, label: '2F 低圧電灯盤 №1 1LM-A', category: 'total' },
-    { col: 'AU', tag: 'tag06', kwIndex: 11, label: '2F 低圧電灯盤 №1 1LM-B', category: 'total' },
-    { col: 'AV', tag: 'tag06', kwIndex: 12, label: '2F 低圧電灯盤 №1 2LM-A', category: 'total' },
-    { col: 'AW', tag: 'tag06', kwIndex: 13, label: '2F 低圧電灯盤 №1 2LM-B', category: 'total' },
-    { col: 'AX', tag: 'tag06', kwIndex: 14, label: '2F 低圧電灯盤 №1 2LM-C', category: 'total' },
-    { col: 'AY', tag: 'tag06', kwIndex: 15, label: '2F 低圧電灯盤 №1 ｹﾞｰﾄﾊｳｽ', category: 'total' },
-    { col: 'AZ', tag: 'tag06', kwIndex: 16, label: '2F 低圧電灯盤 №1 8.20.18E包装制御盤', category: 'packaging' },
-    { col: 'BA', tag: 'tag06', kwIndex: 17, label: '2F 低圧電灯盤 №1 排水処理制御盤', category: 'total' },
-    { col: 'BB', tag: 'tag06', kwIndex: 18, label: '2F 低圧電灯盤 №1 1LM-C', category: 'total' },
-    { col: 'BC', tag: 'tag06', kwIndex: 19, label: '2F 低圧電灯盤 №1 ﾎﾞｲﾗ-室ｺﾝﾌﾟﾚｯｻｰ室電灯', category: 'total' },
-    { col: 'BD', tag: 'tag06', kwIndex: 20, label: '2F 低圧動力盤 №3 2M-A', category: 'total' },
-    { col: 'BE', tag: 'tag06', kwIndex: 21, label: '2F 低圧動力盤 №3 冷蔵倉庫', category: 'total' },
-    { col: 'BF', tag: 'tag06', kwIndex: 22, label: '2F 低圧動力盤 №3 包装制御盤', category: 'packaging' },
-    { col: 'BG', tag: 'tag06', kwIndex: 23, label: '2F 低圧動力盤 №3 1LM-A', category: 'total' },
-    { col: 'BH', tag: 'tag06', kwIndex: 24, label: '2F 低圧動力盤 №3 2LM-A', category: 'total' },
-    { col: 'BI', tag: 'tag06', kwIndex: 25, label: '2F 低圧動力盤 №3 2LM-B', category: 'total' },
-    { col: 'BJ', tag: 'tag06', kwIndex: 26, label: '2F 低圧動力盤 №3 1M-C', category: 'total' },
-    { col: 'BK', tag: 'tag06', kwIndex: 27, label: '2F 低圧動力盤 №3 調合CIP', category: 'mixing' },
-    { col: 'BL', tag: 'tag06', kwIndex: 28, label: '2F 低圧動力盤 №3 ﾎﾞﾄﾙ開梱室AC.ｷｬｯﾌﾟ室AC', category: 'total' },
-    { col: 'BM', tag: 'tag06', kwIndex: 29, label: '2F 低圧動力盤 №3 1LM-B', category: 'total' },
-    { col: 'BN', tag: 'tag06', kwIndex: 30, label: '2F 低圧動力盤 №3 2LM-C', category: 'total' },
-    { col: 'BO', tag: 'tag06', kwIndex: 31, label: '2F 低圧動力盤 №3 ｹﾞｰﾄﾊｳｽ', category: 'total' },
-    { col: 'BP', tag: 'tag06', kwIndex: 32, label: '2F 低圧動力盤 №4 ｼｰﾄ供給.ｹｰｽｺﾍﾞｱ.ﾊﾟﾚﾀｲｻﾞｰ', category: 'packaging' },
-    { col: 'BQ', tag: 'tag06', kwIndex: 33, label: '2F 低圧動力盤 №4 13E.31-3', category: 'packaging' },
-    { col: 'BR', tag: 'tag06', kwIndex: 34, label: '2F 低圧動力盤 №4 実瓶ｺﾝﾍﾞｱ振分装置', category: 'packaging' },
-    { col: 'BS', tag: 'tag06', kwIndex: 35, label: '2F 低圧動力盤 №4 ｹｰｻｰ制御盤', category: 'packaging' },
-    { col: 'BT', tag: 'tag06', kwIndex: 36, label: '2F 低圧動力盤 №4 分電盤(1)', category: 'total' },
-    { col: 'BU', tag: 'tag06', kwIndex: 37, label: '2F 低圧動力盤 №4 15-1', category: 'packaging' },
-    { col: 'BV', tag: 'tag06', kwIndex: 38, label: '2F 低圧動力盤 №4 充填ﾊﾟﾈﾙ', category: 'filling' },
-    { col: 'BW', tag: 'tag06', kwIndex: 39, label: '2F 低圧動力盤 №4 空ﾊﾟﾚｯﾄ搬送', category: 'supply' },
-    { col: 'BX', tag: 'tag06', kwIndex: 40, label: '2F 低圧動力盤 №4 ﾌｨﾗ給液制御盤', category: 'filling' },
-    { col: 'BY', tag: 'tag06', kwIndex: 41, label: '2F 低圧動力盤 №4 分電盤(2)', category: 'total' },
-    { col: 'BZ', tag: 'tag06', kwIndex: 42, label: '2F 低圧動力盤 №4 2E.3Eﾊﾞﾙｸﾃﾞﾊﾟﾚﾀｲｻﾞｰ', category: 'supply' },
-    { col: 'CA', tag: 'tag06', kwIndex: 43, label: '2F 低圧動力盤 №4 CIPパネル', category: 'filling' },
-    { col: 'CB', tag: null, fixedVal: 0.0, label: '2F 低圧動力盤 №5 HGINV', category: 'total' },
+    { col: 'AJ', tag: 'tag06', kwIndex: 0, label: '屋上 屋上室外機' },
+    { col: 'AK', tag: 'tag06', kwIndex: 1, label: '屋上 ﾁﾗｰ' },
+    { col: 'AL', tag: 'tag06', kwIndex: 2, label: '屋上 屋上室外機ACP-C' },
+    { col: 'AM', tag: 'tag06', kwIndex: 3, label: '屋上 屋上冷水2次ﾎﾟﾝﾌﾟ(生産用)' },
+    { col: 'AN', tag: 'tag06', kwIndex: 4, label: '抽出室 ﾙｰﾂﾌﾞﾛｱ' },
+    { col: 'AO', tag: 'tag06', kwIndex: 5, label: '抽出室 ﾛｰﾀﾘｰﾊﾞﾙﾌﾞ' },
+    { col: 'AP', tag: 'tag06', kwIndex: 6, label: '抽出室 粕搬送ｺﾝﾍﾞｱ抽出器下' },
+    { col: 'AQ', tag: 'tag06', kwIndex: 7, label: '抽出室 粕搬送ｺﾝﾍﾞｱ合流CV' },
+    { col: 'AR', tag: 'tag06', kwIndex: 8, label: '抽出室 粕搬送CV(ﾆｰﾀﾞｰ用)' },
+    { col: 'AS', tag: 'tag06', kwIndex: 9, label: '抽出室 屋外振分ｽｸﾘｭｰ' },
+    { col: 'AT', tag: 'tag06', kwIndex: 10, label: '2F 低圧電灯盤 №1 1LM-A' },
+    { col: 'AU', tag: 'tag06', kwIndex: 11, label: '2F 低圧電灯盤 №1 1LM-B' },
+    { col: 'AV', tag: 'tag06', kwIndex: 12, label: '2F 低圧電灯盤 №1 2LM-A' },
+    { col: 'AW', tag: 'tag06', kwIndex: 13, label: '2F 低圧電灯盤 №1 2LM-B' },
+    { col: 'AX', tag: 'tag06', kwIndex: 14, label: '2F 低圧電灯盤 №1 2LM-C' },
+    { col: 'AY', tag: 'tag06', kwIndex: 15, label: '2F 低圧電灯盤 №1 ｹﾞｰﾄﾊｳｽ' },
+    { col: 'AZ', tag: 'tag06', kwIndex: 16, label: '2F 低圧電灯盤 №1 8.20.18E包装制御盤' },
+    { col: 'BA', tag: 'tag06', kwIndex: 17, label: '2F 低圧電灯盤 №1 排水処理制御盤' },
+    { col: 'BB', tag: 'tag06', kwIndex: 18, label: '2F 低圧電灯盤 №1 1LM-C' },
+    { col: 'BC', tag: 'tag06', kwIndex: 19, label: '2F 低圧電灯盤 №1 ﾎﾞｲﾗ-室ｺﾝﾌﾟﾚｯｻｰ室電灯' },
+    { col: 'BD', tag: 'tag06', kwIndex: 20, label: '2F 低圧動力盤 №3 2M-A' },
+    { col: 'BE', tag: 'tag06', kwIndex: 21, label: '2F 低圧動力盤 №3 冷蔵倉庫' },
+    { col: 'BF', tag: 'tag06', kwIndex: 22, label: '2F 低圧動力盤 №3 包装制御盤' },
+    { col: 'BG', tag: 'tag06', kwIndex: 23, label: '2F 低圧動力盤 №3 1LM-A' },
+    { col: 'BH', tag: 'tag06', kwIndex: 24, label: '2F 低圧動力盤 №3 2LM-A' },
+    { col: 'BI', tag: 'tag06', kwIndex: 25, label: '2F 低圧動力盤 №3 2LM-B' },
+    { col: 'BJ', tag: 'tag06', kwIndex: 26, label: '2F 低圧動力盤 №3 1M-C' },
+    { col: 'BK', tag: 'tag06', kwIndex: 27, label: '2F 低圧動力盤 №3 調合CIP' },
+    { col: 'BL', tag: 'tag06', kwIndex: 28, label: '2F 低圧動力盤 №3 ﾎﾞﾄﾙ開梱室AC.ｷｬｯﾌﾟ室AC' },
+    { col: 'BM', tag: 'tag06', kwIndex: 29, label: '2F 低圧動力盤 №3 1LM-B' },
+    { col: 'BN', tag: 'tag06', kwIndex: 30, label: '2F 低圧動力盤 №3 2LM-C' },
+    { col: 'BO', tag: 'tag06', kwIndex: 31, label: '2F 低圧動力盤 №3 ｹﾞｰﾄﾊｳｽ' },
+    { col: 'BP', tag: 'tag06', kwIndex: 32, label: '2F 低圧動力盤 №4 ｼｰﾄ供給.ｹｰｽｺﾍﾞｱ.ﾊﾟﾚﾀｲｻﾞｰ' },
+    { col: 'BQ', tag: 'tag06', kwIndex: 33, label: '2F 低圧動力盤 №4 13E.31-3' },
+    { col: 'BR', tag: 'tag06', kwIndex: 34, label: '2F 低圧動力盤 №4 実瓶ｺﾝﾍﾞｱ振分装置' },
+    { col: 'BS', tag: 'tag06', kwIndex: 35, label: '2F 低圧動力盤 №4 ｹｰｻｰ制御盤' },
+    { col: 'BT', tag: 'tag06', kwIndex: 36, label: '2F 低圧動力盤 №4 分電盤(1)' },
+    { col: 'BU', tag: 'tag06', kwIndex: 37, label: '2F 低圧動力盤 №4 15-1' },
+    { col: 'BV', tag: 'tag06', kwIndex: 38, label: '2F 低圧動力盤 №4 充填ﾊﾟﾈﾙ' },
+    { col: 'BW', tag: 'tag06', kwIndex: 39, label: '2F 低圧動力盤 №4 空ﾊﾟﾚｯﾄ搬送' },
+    { col: 'BX', tag: 'tag06', kwIndex: 40, label: '2F 低圧動力盤 №4 ﾌｨﾗ給液制御盤' },
+    { col: 'BY', tag: 'tag06', kwIndex: 41, label: '2F 低圧動力盤 №4 分電盤(2)' },
+    { col: 'BZ', tag: 'tag06', kwIndex: 42, label: '2F 低圧動力盤 №4 2E.3Eﾊﾞﾙｸﾃﾞﾊﾟﾚﾀｲｻﾞｰ' },
+    { col: 'CA', tag: 'tag06', kwIndex: 43, label: '2F 低圧動力盤 №4 CIPパネル' },
+    { col: 'CB', tag: null, fixedVal: 0.0, label: '2F 低圧動力盤 №5 HGINV' },
 
     // tag07 (1210-1236: 13列)
-    { col: 'CC', tag: 'tag07', kwIndex: 0, label: '2F 低圧動力盤 №5 抽出ﾊﾟﾈﾙ.抽出工程ﾊﾟﾈﾙ', category: 'mixing' },
-    { col: 'CD', tag: 'tag07', kwIndex: 1, label: '2F 低圧動力盤 №5 1LM-C', category: 'total' },
-    { col: 'CE', tag: 'tag07', kwIndex: 2, label: '2F 低圧動力盤 №5 29-1', category: 'packaging' },
-    { col: 'CF', tag: 'tag07', kwIndex: 3, label: '2F 低圧動力盤 №5 36.39', category: 'packaging' },
-    { col: 'CG', tag: 'tag07', kwIndex: 4, label: '2F 低圧動力盤 №5 殺菌制御盤', category: 'filling' },
-    { col: 'CH', tag: 'tag07', kwIndex: 5, label: '2F 低圧動力盤 №5 ｸﾗﾘ動力(PET・CUP)', category: 'mixing' },
-    { col: 'CI', tag: 'tag07', kwIndex: 6, label: '2F 低圧動力盤 №5 調合ﾀﾝｸﾊﾟﾈﾙ', category: 'mixing' },
-    { col: 'CJ', tag: 'tag07', kwIndex: 7, label: '2F 低圧動力盤 №5 ｽﾄﾚｰｼﾞ温水ﾊﾟﾈﾙ', category: 'mixing' },
-    { col: 'CK', tag: 'tag07', kwIndex: 8, label: '2F 低圧動力盤 №5 ﾆｰﾀﾞｰ.抽出工程ﾊﾟﾈﾙ', category: 'mixing' },
-    { col: 'CL', tag: 'tag07', kwIndex: 9, label: '2F 低圧動力盤 №5 新1真空ﾎﾟﾝﾌﾟﾗﾍﾞﾗｰ制御盤', category: 'packaging' },
-    { col: 'CM', tag: 'tag07', kwIndex: 10, label: '2F 低圧動力盤 №5 定置式発泡洗浄装置制御盤', category: 'filling' },
-    { col: 'CN', tag: 'tag07', kwIndex: 11, label: '2F 低圧動力盤 №5 空ﾎﾞﾄﾙ制御盤', category: 'filling' },
-    { col: 'CO', tag: 'tag07', kwIndex: 12, label: '2F 低圧動力盤 №5 ﾘﾝｻ・ﾌｨﾗ・ｷｬｯﾊﾟ制御盤', category: 'filling' }
+    { col: 'CC', tag: 'tag07', kwIndex: 0, label: '2F 低圧動力盤 №5 抽出ﾊﾟﾈﾙ.抽出工程ﾊﾟﾈﾙ' },
+    { col: 'CD', tag: 'tag07', kwIndex: 1, label: '2F 低圧動力盤 №5 1LM-C' },
+    { col: 'CE', tag: 'tag07', kwIndex: 2, label: '2F 低圧動力盤 №5 29-1' },
+    { col: 'CF', tag: 'tag07', kwIndex: 3, label: '2F 低圧動力盤 №5 36.39' },
+    { col: 'CG', tag: 'tag07', kwIndex: 4, label: '2F 低圧動力盤 №5 殺菌制御盤' },
+    { col: 'CH', tag: 'tag07', kwIndex: 5, label: '2F 低圧動力盤 №5 ｸﾗﾘ動力(PET・CUP)' },
+    { col: 'CI', tag: 'tag07', kwIndex: 6, label: '2F 低圧動力盤 №5 調合ﾀﾝｸﾊﾟﾈﾙ' },
+    { col: 'CJ', tag: 'tag07', kwIndex: 7, label: '2F 低圧動力盤 №5 ｽﾄﾚｰｼﾞ温水ﾊﾟﾈﾙ' },
+    { col: 'CK', tag: 'tag07', kwIndex: 8, label: '2F 低圧動力盤 №5 ﾆｰﾀﾞｰ.抽出工程ﾊﾟﾈﾙ' },
+    { col: 'CL', tag: 'tag07', kwIndex: 9, label: '2F 低圧動力盤 №5 新1真空ﾎﾟﾝﾌﾟﾗﾍﾞﾗｰ制御盤' },
+    { col: 'CM', tag: 'tag07', kwIndex: 10, label: '2F 低圧動力盤 №5 定置式発泡洗浄装置制御盤' },
+    { col: 'CN', tag: 'tag07', kwIndex: 11, label: '2F 低圧動力盤 №5 空ﾎﾞﾄﾙ制御盤' },
+    { col: 'CO', tag: 'tag07', kwIndex: 12, label: '2F 低圧動力盤 №5 ﾘﾝｻ・ﾌｨﾗ・ｷｬｯﾊﾟ制御盤' }
   ];
 
   // グラフ目盛りスケール設定 (初期マスター定義)
   const SCALE_CONFIG = {
     mode: 'auto', // 'auto' (自動最適化) または 'fixed' (固定値指定)
+    // 自動算出時、データの最大値を軸の高さのどのあたりに置くか (0〜1)。小さくするほど上の余白が広がる
+    autoLayout: {
+      rateBarPeakRatio: 0.6,  // 原単位グラフ: 品種別の棒の最大 (折れ線と重ならないよう低めに置く)
+      rateLinePeakRatio: 0.9, // 原単位グラフ: 全体平均の折れ線の最大
+      trendPeakRatio: 0.9     // トレンドグラフ (総量系): 品種別の線の最大
+    },
     fixedValues: {
       daily: {
         totalKwh: 30000 // 単月詳細: 日別総電力量 [kWh]
@@ -1951,9 +1947,13 @@ button, input, select {
   return {
     VARIETY_MASTER,
     VARIETY_GROUPS,
+    VARIETY_KEYS,
     VARIETY_MAPPING,
     EVALUATION_METRICS,
-    OPERATION_MODES,
+    RATE_METRIC_KEYS,
+    FISCAL_MONTH_ORDER,
+    FISCAL_MONTH_LABELS,
+    getFiscalYear,
     STEP_MASTER,
     CATEGORIES,
     CATEGORY_COLUMN_MAP,
@@ -2050,7 +2050,6 @@ button, input, select {
     const kwColIndices = [];
     let varietyColIdx = -1;
     let stepColIdx = -1;
-    let operationColIdx = -1;
 
     for (let c = 0; c < unitRow.length; c++) {
       const unit = (unitRow[c] || '').replace(/"/g, '').trim().toLowerCase();
@@ -2061,8 +2060,6 @@ button, input, select {
           varietyColIdx = c;
         } else if (colName.includes('ステップ')) {
           stepColIdx = c;
-        } else if (colName.includes('運転')) {
-          operationColIdx = c;
         }
       }
 
@@ -2107,7 +2104,6 @@ button, input, select {
       if (tagType === 'tag02') {
         if (varietyColIdx >= 0) rowObj['variety'] = cols[varietyColIdx] ? parseInt(cols[varietyColIdx], 10) : null;
         if (stepColIdx >= 0) rowObj['step'] = cols[stepColIdx] ? parseInt(cols[stepColIdx], 10) : null;
-        if (operationColIdx >= 0) rowObj['operation'] = cols[operationColIdx] ? parseInt(cols[operationColIdx], 10) : null;
       }
 
       for (const mapping of columnMappings) {
@@ -2379,9 +2375,6 @@ button, input, select {
       // 稼働モード分数のカウントおよび最頻品種コードの特定
       let waterTimeMin = 0;
       let actualFillingMin = 0;
-      let cipMin = 0;
-      let sipMin = 0;
-      let otherMin = 0;
 
       const varietyCounts = {};
       for (const rec of bucket.minuteRecords) {
@@ -2391,9 +2384,6 @@ button, input, select {
           const catCode = stepInfo ? stepInfo.code : 0;
           if (catCode === 20) waterTimeMin++;
           else if (catCode === 30) actualFillingMin++;
-          else if (catCode === 40) cipMin++;
-          else if (catCode === 10) sipMin++;
-          else otherMin++;
         }
 
         const vVal = rec['variety'];
@@ -2410,8 +2400,6 @@ button, input, select {
           dominantVariety = parseInt(v, 10);
         }
       }
-
-      const dominantStepCode = actualFillingMin > 0 ? 30 : (waterTimeMin > 0 ? 20 : 0);
 
       // 各電力列の計算
       for (const col of columnKeys) {
@@ -2455,21 +2443,15 @@ button, input, select {
 
       hourlyRows.push({
         hourIndex: bucket.hourIndex,
-        rowNumber: bucket.hourIndex + 10,
         timestampKey: bucket.timestampKey,
         date: bucket.dateStr,
         hour: bucket.hour,
-        validMinuteCount: count,
         isInterpolated,
         varietyCode: dominantVariety,
-        stepCode: dominantStepCode,
         values: rowValues,
         operationTimes: {
           waterTimeMin,
-          actualFillingMin,
-          cipMin,
-          sipMin,
-          otherMin
+          actualFillingMin
         }
       });
     }
@@ -2514,11 +2496,11 @@ button, input, select {
   if (typeof module === 'object' && module.exports) {
     let XLSX;
     try { XLSX = require('xlsx'); } catch(e) {}
-    module.exports = factory(XLSX);
+    module.exports = factory(XLSX, require('../config.js'));
   } else {
-    root.ExcelReader = factory(root.XLSX);
+    root.ExcelReader = factory(root.XLSX, root.AppConfig);
   }
-}(typeof self !== 'undefined' ? self : this, function (XLSXLib) {
+}(typeof self !== 'undefined' ? self : this, function (XLSXLib, AppConfig) {
 
   /**
    * かつらぎ工場エネルギー計算表から特定年月の電気料金データを抽出する
@@ -2535,7 +2517,7 @@ button, input, select {
     const wb = typeof workbookData.Sheets === 'object' ? workbookData : XLSX.read(workbookData, { type: 'array' });
     const targetMonth = parseInt(yearMonth.slice(4, 6), 10); // 1〜12
     const targetYear = parseInt(yearMonth.slice(0, 4), 10);
-    const nendo = targetMonth >= 4 ? targetYear : targetYear - 1; // 2024年度
+    const nendo = AppConfig.getFiscalYear(targetYear, targetMonth); // 2024年度
 
     let usedKwh = null;
     let costThousand = null;
@@ -2607,7 +2589,7 @@ button, input, select {
     const wb = typeof workbookData.Sheets === 'object' ? workbookData : XLSX.read(workbookData, { type: 'array' });
     const targetMonth = parseInt(yearMonth.slice(4, 6), 10);
     const targetYear = parseInt(yearMonth.slice(0, 4), 10);
-    const nendo = targetMonth >= 4 ? targetYear : targetYear - 1;
+    const nendo = AppConfig.getFiscalYear(targetYear, targetMonth);
 
     const varieties = {};
     let totalBottles = 0;
@@ -2647,8 +2629,7 @@ button, input, select {
       const data = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
 
       // パターンA: 12列横並びブロック帳票 (4月=Col B(1), 5月=Col N(13), 6月=Col Z(25) ...)
-      const order = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
-      const mIdx = order.indexOf(targetMonth);
+      const mIdx = AppConfig.FISCAL_MONTH_ORDER.indexOf(targetMonth);
       if (mIdx >= 0) {
         const baseCol = mIdx * 12 + 1; // 各月ブロック開始列 (B=1, N=13, Z=25...)
 
@@ -2671,18 +2652,8 @@ button, input, select {
           }
         }
 
-        // 2. 品種合算マッピング設定の取得 (Config.gs / AppConfig 準拠)
-        const varietyMapping = (typeof AppConfig !== 'undefined' && AppConfig.VARIETY_MAPPING) ||
-          (typeof CONFIG !== 'undefined' && CONFIG.VARIETY_MAPPING) || {
-            '2.0L': ['2.0L', '2L'],
-            '1.5L': ['1.5L'],
-            '1.0L': ['1.0L長角', '1.0L正角', '1.0L', '1L'],
-            '600mL丸': ['600mL丸', '600ml丸'],
-            '500mL丸': ['500mL丸', '500ml丸', '550mL丸', '550ml丸'],
-            '500mL角': ['500mL角', '500ml角'],
-            '350mL': ['350mL', '350ml'],
-            '280mL': ['280mL', '280ml']
-          };
+        // 2. 品種合算マッピング設定の取得 (起動時にGAS側 Config.gs の値で上書きされるため、呼び出しの都度参照する)
+        const varietyMapping = AppConfig.VARIETY_MAPPING;
 
         let vSum = 0;
         let r = 10;
@@ -2786,8 +2757,7 @@ button, input, select {
    */
   function getFiscalMonthColIndex(calendarMonth) {
     // 4月: 0, 5月: 1, ..., 12月: 8, 1月: 9, 2月: 10, 3月: 11 (オフセット調整用)
-    const order = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
-    const idx = order.indexOf(calendarMonth);
+    const idx = AppConfig.FISCAL_MONTH_ORDER.indexOf(calendarMonth);
     return idx >= 0 ? idx + 2 : 2; // ヘッダー列等を考慮して通常+2列目以降
   }
 
@@ -2819,7 +2789,7 @@ button, input, select {
    * 1時間集約データから工程別小計を算出する
    * @param {Array<Object>} hourlyRows 1時間ごとの行データ
    * @param {Object} monthlyColumnSums 各列の月間合計
-   * @returns {Object} { categoryHourlyRows, categoryDailyTotals, categoryMonthlyTotals }
+   * @returns {Object} { categoryDailyTotals, categoryMonthlyTotals, monthlyOperationTimes }
    */
   function aggregateCategories(hourlyRows, monthlyColumnSums = {}) {
     const categories = AppConfig.CATEGORIES; // [{ key, name, sheetName }]
@@ -2865,10 +2835,7 @@ button, input, select {
           categories: initialSums,
           operationTimes: {
             waterTimeMin: 0,
-            actualFillingMin: 0,
-            cipMin: 0,
-            sipMin: 0,
-            otherMin: 0
+            actualFillingMin: 0
           }
         });
       }
@@ -2881,9 +2848,6 @@ button, input, select {
       if (row.operationTimes) {
         dayObj.operationTimes.waterTimeMin += (row.operationTimes.waterTimeMin || 0);
         dayObj.operationTimes.actualFillingMin += (row.operationTimes.actualFillingMin || 0);
-        dayObj.operationTimes.cipMin += (row.operationTimes.cipMin || 0);
-        dayObj.operationTimes.sipMin += (row.operationTimes.sipMin || 0);
-        dayObj.operationTimes.otherMin += (row.operationTimes.otherMin || 0);
       }
     }
 
@@ -2925,21 +2889,14 @@ button, input, select {
     // 月間稼働時間合計
     const monthlyOperationTimes = {
       waterTimeMin: 0,
-      actualFillingMin: 0,
-      cipMin: 0,
-      sipMin: 0,
-      otherMin: 0
+      actualFillingMin: 0
     };
     for (const d of categoryDailyTotals) {
       monthlyOperationTimes.waterTimeMin += d.operationTimes.waterTimeMin;
       monthlyOperationTimes.actualFillingMin += d.operationTimes.actualFillingMin;
-      monthlyOperationTimes.cipMin += d.operationTimes.cipMin;
-      monthlyOperationTimes.sipMin += d.operationTimes.sipMin;
-      monthlyOperationTimes.otherMin += d.operationTimes.otherMin;
     }
 
     return {
-      categoryHourlyRows,
       categoryDailyTotals,
       categoryMonthlyTotals,
       monthlyOperationTimes
@@ -2962,12 +2919,11 @@ button, input, select {
 
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    const AppConfig = require('../config.js');
-    module.exports = factory(AppConfig);
+    module.exports = factory();
   } else {
-    root.KpiService = factory(root.AppConfig);
+    root.KpiService = factory();
   }
-}(typeof self !== 'undefined' ? self : this, function (AppConfig) {
+}(typeof self !== 'undefined' ? self : this, function () {
 
   /**
    * KPI評価指標を算出する
@@ -3070,7 +3026,7 @@ button, input, select {
   }
 }(typeof self !== 'undefined' ? self : this, function (config) {
 
-  const { VARIETY_GROUPS, EVALUATION_METRICS, OPERATION_MODES } = config;
+  const { VARIETY_GROUPS, EVALUATION_METRICS } = config;
 
   /**
    * 年間12ヶ月の年月リスト (4月〜翌年3月) を生成
@@ -3078,14 +3034,7 @@ button, input, select {
    * @returns {Array} ['202404', '202405', ..., '202503']
    */
   function getFiscalMonths(fiscalYear) {
-    const months = [];
-    for (let m = 4; m <= 12; m++) {
-      months.push(`${fiscalYear}${String(m).padStart(2, '0')}`);
-    }
-    for (let m = 1; m <= 3; m++) {
-      months.push(`${fiscalYear + 1}${String(m).padStart(2, '0')}`);
-    }
-    return months;
+    return config.FISCAL_MONTH_ORDER.map(m => `${m >= 4 ? fiscalYear : fiscalYear + 1}${String(m).padStart(2, '0')}`);
   }
 
   /**
@@ -3194,7 +3143,7 @@ button, input, select {
     const dataset = {
       fiscalYear,
       months, // ['202404', ... '202503']
-      monthLabels: ['4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月', '1月', '2月', '3月'],
+      monthLabels: config.FISCAL_MONTH_LABELS.slice(),
       unitPrices: {}, // '202404': 19.36, etc.
       modes: {
         combined: createEmptyModeTable(months),
@@ -3244,7 +3193,7 @@ button, input, select {
   function buildAnnualDataset(fiscalYear, monthlyDatasets = {}) {
     const fYear = parseInt(fiscalYear, 10);
     const months = getFiscalMonths(fYear);
-    const monthLabels = ['4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月', '1月', '2月', '3月'];
+    const monthLabels = config.FISCAL_MONTH_LABELS.slice();
 
     const annualDataset = createEmptyAnnualDataset(fYear);
     annualDataset.fiscalYear = fYear;
@@ -3252,10 +3201,7 @@ button, input, select {
     annualDataset.monthLabels = monthLabels;
 
     const unitPrices = {};
-    const equipmentCats = [
-      '総電力', 'ユーティリティ', 'コンプレッサー', 'ボイラー',
-      '純水装置', '排水処理', 'チラー', '調合抽出', '供給', '充填', '包装'
-    ];
+    const equipmentCats = config.CATEGORIES.map(c => c.name);
 
     const equipmentSummary = {
       months: months,
@@ -3574,11 +3520,11 @@ button, input, select {
 
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory();
+    module.exports = factory(require('../config.js'));
   } else {
-    root.ChartManager = factory();
+    root.ChartManager = factory(root.AppConfig);
   }
-}(typeof self !== 'undefined' ? self : this, function () {
+}(typeof self !== 'undefined' ? self : this, function (AppConfig) {
 
   // チャートインスタンス管理
   let dailyChartInstance = null;
@@ -3589,17 +3535,29 @@ button, input, select {
   let annualEquipDoughnutChartInstance = null;
 
   // 品種カラーパレット (Excel原紙・月別電力使用量集約グラフ表示(総電力 2024).xlsx 準拠)
-  const VARIETY_COLORS = {
-    '2.0L': { bg: 'rgba(37, 99, 235, 0.85)', border: '#2563eb' },
-    '1.5L': { bg: 'rgba(8, 145, 178, 0.85)', border: '#0891b2' },
-    '1.0L': { bg: 'rgba(5, 150, 105, 0.85)', border: '#059669' },
-    '600mL丸': { bg: 'rgba(101, 163, 13, 0.85)', border: '#65a30d' },
-    '500mL丸': { bg: 'rgba(217, 119, 6, 0.85)', border: '#d97706' },
-    '500mL角': { bg: 'rgba(234, 88, 12, 0.85)', border: '#ea580c' },
-    '350mL': { bg: 'rgba(124, 58, 237, 0.85)', border: '#7c3aed' },
-    '280mL': { bg: 'rgba(219, 39, 119, 0.85)', border: '#db2777' },
-    '月計': { bg: 'rgba(15, 23, 42, 0.9)', border: '#0f172a' }
-  };
+  // 色そのものは AppConfig.VARIETY_GROUPS[].color で定義し、塗りはその 85% 不透明色とする
+  const VARIETY_COLORS = {};
+  AppConfig.VARIETY_GROUPS.forEach(g => {
+    VARIETY_COLORS[g.key] = { bg: hexToRgba(g.color, 0.85), border: g.color };
+  });
+
+  // 工程大分類5種 (color: ドーナツ内側リング・設備詳細の棒、stackColor: 工程別積み上げ棒)
+  const MAIN_PROCESSES = [
+    { name: 'ユーティリティ', color: '#0284c7', stackColor: 'rgba(14, 165, 233, 0.8)' },
+    { name: '調合抽出', color: '#7c3aed', stackColor: 'rgba(124, 58, 237, 0.8)' },
+    { name: '供給', color: '#f59e0b', stackColor: 'rgba(245, 158, 11, 0.8)' },
+    { name: '充填', color: '#059669', stackColor: 'rgba(5, 150, 105, 0.8)' },
+    { name: '包装', color: '#ea580c', stackColor: 'rgba(234, 88, 12, 0.8)' }
+  ];
+
+  // ユーティリティ内訳5種 (ドーナツ外側リング・設備詳細の棒)
+  const UTILITY_BREAKDOWN = [
+    { name: 'コンプレッサー', color: '#38bdf8' },
+    { name: 'ボイラー', color: '#0284c7' },
+    { name: '純水装置', color: '#0ea5e9' },
+    { name: '排水処理', color: '#64748b' },
+    { name: 'チラー', color: '#0891b2' }
+  ];
 
   const GRID_COLOR = 'rgba(226, 232, 240, 0.8)';
   const TEXT_COLOR = '#64748b';
@@ -3627,6 +3585,42 @@ button, input, select {
     return parseFloat((niceFraction * Math.pow(10, exponent)).toPrecision(4));
   }
 
+  // getAxisMaxForPeak の切り上げ候補 (仮数)。getNiceMax より細かく刻み、狙った高さからのずれを小さくする (隣り合う候補の比は最大1.25)
+  // Chart.js の目盛り間隔 (1・2・5系で最大10区間) で割り切れる値だけを並べている。それ以外を入れると最上段の目盛りだけ間隔が詰まる
+  const FINE_NICE_STEPS = [1, 1.2, 1.4, 1.6, 1.8, 2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7, 8, 9, 10];
+
+  /**
+   * データの最大値が軸の高さの指定割合に来るような、キリの良い軸上限を算出する
+   * @param {number} peakValue データの最大値
+   * @param {number} peakRatio 最大値を置く高さ (0〜1。例: 0.6 なら軸の60%の位置)
+   * @returns {number|undefined} 軸上限 (算出できない場合は undefined)
+   */
+  function getAxisMaxForPeak(peakValue, peakRatio) {
+    if (!peakValue || peakValue <= 0 || !isFinite(peakValue)) return undefined;
+    const ratio = peakRatio > 0 && peakRatio <= 1 ? peakRatio : 1;
+    const target = peakValue / ratio;
+    const exponent = Math.floor(Math.log10(target));
+    const fraction = target / Math.pow(10, exponent);
+    // 浮動小数点の誤差で、ちょうど候補に乗る値が1段上へ切り上がらないようにする
+    const niceFraction = FINE_NICE_STEPS.find(step => step >= fraction - 1e-9) || 10;
+    return parseFloat((niceFraction * Math.pow(10, exponent)).toPrecision(4));
+  }
+
+  /**
+   * '#rrggbb' を 'rgba(r, g, b, alpha)' に変換する
+   */
+  function hexToRgba(hex, alpha) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+  }
+
+  /**
+   * 積み上げ棒グラフの系列定義を生成する
+   */
+  function buildStackedBar(label, data, backgroundColor, stack) {
+    return { type: 'bar', label, data, backgroundColor, borderRadius: 2, stack, order: 1 };
+  }
+
   /**
    * 【年間】月別電力使用量集約グラフ (8品種積み上げバー ＋ 月計折れ線)
    * @param {string} canvasId 
@@ -3645,10 +3639,10 @@ button, input, select {
       annualStackedChartInstance.destroy();
     }
 
-    const varietyKeys = ['2.0L', '1.5L', '1.0L', '600mL丸', '500mL丸', '500mL角', '350mL', '280mL'];
+    const varietyKeys = AppConfig.VARIETY_KEYS;
 
     // 原単位・平均系指標かどうかの判定 (単位本、単位時間)
-    const isRateMetric = ['kwhPerBottle', 'costPerBottle', 'kwhPerMinute', 'costPerMinute'].includes(metricInfo.key);
+    const isRateMetric = AppConfig.RATE_METRIC_KEYS.includes(metricInfo.key);
 
     // 1. 各品種のバーデータセット
     const datasets = varietyKeys.map(vk => {
@@ -3856,7 +3850,7 @@ button, input, select {
       annualTrendChartInstance.destroy();
     }
 
-    const varietyKeys = ['2.0L', '1.5L', '1.0L', '600mL丸', '500mL丸', '500mL角', '350mL', '280mL'];
+    const varietyKeys = AppConfig.VARIETY_KEYS;
 
     const datasets = varietyKeys.map(vk => {
       const color = VARIETY_COLORS[vk] || { bg: '#94a3b8', border: '#64748b' };
@@ -3879,7 +3873,9 @@ button, input, select {
       };
     });
 
-    const trendMax = scaleOptions && scaleOptions.trendMax > 0 ? scaleOptions.trendMax : (scaleOptions && scaleOptions.max > 0 ? scaleOptions.max : undefined);
+    // 品種単体の値を描くため、専用の上限 (trendMax) を優先する。無ければ集約グラフと同じ上限を使う
+    const trendMax = scaleOptions && scaleOptions.trendMax > 0 ? scaleOptions.trendMax
+      : (scaleOptions && scaleOptions.max > 0 ? scaleOptions.max : undefined);
 
     annualTrendChartInstance = new Chart(ctx, {
       type: 'line',
@@ -3940,11 +3936,6 @@ button, input, select {
 
     const labels = dailyTotals.map(d => `${d.day}日`);
     const totalData = dailyTotals.map(d => d.categories['総電力'] || 0);
-    const utilityData = dailyTotals.map(d => d.categories['ユーティリティ'] || 0);
-    const mixingData = dailyTotals.map(d => d.categories['調合抽出'] || 0);
-    const supplyData = dailyTotals.map(d => d.categories['供給'] || 0);
-    const fillingData = dailyTotals.map(d => d.categories['充填'] || 0);
-    const packagingData = dailyTotals.map(d => d.categories['包装'] || 0);
 
     const dailyMax = scaleOptions && scaleOptions.max > 0 ? scaleOptions.max : undefined;
 
@@ -3965,51 +3956,13 @@ button, input, select {
             tension: 0,
             order: 0
           },
-          {
-            type: 'bar',
-            label: 'ユーティリティ (kWh)',
-            data: utilityData,
-            backgroundColor: 'rgba(14, 165, 233, 0.8)',
-            borderRadius: 2,
-            stack: 'dailyStack',
-            order: 1
-          },
-          {
-            type: 'bar',
-            label: '調合抽出 (kWh)',
-            data: mixingData,
-            backgroundColor: 'rgba(124, 58, 237, 0.8)',
-            borderRadius: 2,
-            stack: 'dailyStack',
-            order: 1
-          },
-          {
-            type: 'bar',
-            label: '供給 (kWh)',
-            data: supplyData,
-            backgroundColor: 'rgba(245, 158, 11, 0.8)',
-            borderRadius: 2,
-            stack: 'dailyStack',
-            order: 1
-          },
-          {
-            type: 'bar',
-            label: '充填 (kWh)',
-            data: fillingData,
-            backgroundColor: 'rgba(5, 150, 105, 0.8)',
-            borderRadius: 2,
-            stack: 'dailyStack',
-            order: 1
-          },
-          {
-            type: 'bar',
-            label: '包装 (kWh)',
-            data: packagingData,
-            backgroundColor: 'rgba(234, 88, 12, 0.8)',
-            borderRadius: 2,
-            stack: 'dailyStack',
-            order: 1
-          }
+          // 工程大分類5種の積み上げ棒
+          ...MAIN_PROCESSES.map(p => buildStackedBar(
+            `${p.name} (kWh)`,
+            dailyTotals.map(d => d.categories[p.name] || 0),
+            p.stackColor,
+            'dailyStack'
+          ))
         ]
       },
       options: {
@@ -4053,51 +4006,30 @@ button, input, select {
   }
 
   /**
-   * 【単月】工程別電力比率多層ドーナツチャート (ユーティリティ外側円弧内訳付き)
+   * 工程別電力比率の多層ドーナツチャート設定を生成する
+   * 内側リング: 工程大分類5種、外側リング: ユーティリティ内訳5種 (他工程の分は透明スペーサー)
+   * @param {Function} getValue カテゴリ名から電力量 (kWh) を返す関数
+   * @param {string} breakdownTooltipLabel 外側リングのツールチップ見出し
    */
-  function renderCategoryDoughnutChart(canvasId, categoryTotals) {
-    if (typeof Chart === 'undefined') return;
-    const ctx = document.getElementById(canvasId);
-    if (!ctx) return;
-
-    if (categoryChartInstance) categoryChartInstance.destroy();
-    if (!categoryTotals || typeof categoryTotals !== 'object') return;
-
+  function buildProcessDoughnutConfig(getValue, breakdownTooltipLabel) {
     // 1. 内側メイン工程 (ユーティリティ、調合抽出、供給、充填、包装)
-    const mainKeys = ['ユーティリティ', '調合抽出', '供給', '充填', '包装'];
-    const mainColors = ['#0284c7', '#7c3aed', '#f59e0b', '#059669', '#ea580c'];
-    const mainData = mainKeys.map(k => (categoryTotals[k] ? categoryTotals[k].grandTotal : 0));
+    const mainKeys = MAIN_PROCESSES.map(p => p.name);
+    const mainColors = MAIN_PROCESSES.map(p => p.color);
+    const mainData = mainKeys.map(getValue);
     const mainTotalSum = mainData.reduce((a, b) => a + b, 0);
 
     // 2. 外側ユーティリティ内訳 (コンプレッサー、ボイラー、純水装置、排水処理、チラー) + 他工程透明スペーサー
-    const uBreakdownKeys = ['コンプレッサー', 'ボイラー', '純水装置', '排水処理', 'チラー'];
-    const uBreakdownColors = ['#38bdf8', '#0284c7', '#0ea5e9', '#64748b', '#0891b2'];
-    const uBreakdownData = uBreakdownKeys.map(k => (categoryTotals[k] ? categoryTotals[k].grandTotal : 0));
-    const uTotal = categoryTotals['ユーティリティ'] ? categoryTotals['ユーティリティ'].grandTotal : 0;
+    const uBreakdownKeys = UTILITY_BREAKDOWN.map(p => p.name);
+    const uBreakdownColors = UTILITY_BREAKDOWN.map(p => p.color);
+    const uTotal = getValue('ユーティリティ');
+    const otherProcessKeys = mainKeys.filter(k => k !== 'ユーティリティ');
 
     // 外側リングの全データ: ユーティリティ内訳5項目 + 残り4工程分(透明)
-    const outerData = [
-      ...uBreakdownData,
-      categoryTotals['調合抽出'] ? categoryTotals['調合抽出'].grandTotal : 0,
-      categoryTotals['供給'] ? categoryTotals['供給'].grandTotal : 0,
-      categoryTotals['充填'] ? categoryTotals['充填'].grandTotal : 0,
-      categoryTotals['包装'] ? categoryTotals['包装'].grandTotal : 0
-    ];
+    const outerData = [...uBreakdownKeys.map(getValue), ...otherProcessKeys.map(getValue)];
+    const outerColors = [...uBreakdownColors, ...otherProcessKeys.map(() => 'transparent')];
+    const outerBorderColors = [...uBreakdownKeys.map(() => '#ffffff'), ...otherProcessKeys.map(() => 'transparent')];
 
-    const outerColors = [
-      ...uBreakdownColors,
-      'transparent',
-      'transparent',
-      'transparent',
-      'transparent'
-    ];
-
-    const outerBorderColors = [
-      '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff',
-      'transparent', 'transparent', 'transparent', 'transparent'
-    ];
-
-    categoryChartInstance = new Chart(ctx, {
+    return {
       type: 'doughnut',
       data: {
         datasets: [
@@ -4133,7 +4065,6 @@ button, input, select {
               generateLabels: function() {
                 // メイン工程5件 + ユーティリティ内訳5件の凡例
                 const labels = [];
-                // メイン
                 mainKeys.forEach((name, i) => {
                   labels.push({
                     text: `${name}`,
@@ -4144,7 +4075,6 @@ button, input, select {
                     index: i
                   });
                 });
-                // 内訳
                 uBreakdownKeys.forEach((name, i) => {
                   labels.push({
                     text: ` └ ${name}`,
@@ -4171,7 +4101,7 @@ button, input, select {
                     const name = uBreakdownKeys[dataIndex];
                     const val = context.raw || 0;
                     const pct = uTotal > 0 ? ((val / uTotal) * 100).toFixed(1) : '0';
-                    return ` [ユーティリティ内訳] ${name}: ${Math.round(val).toLocaleString()} kWh (${pct}%)`;
+                    return ` [${breakdownTooltipLabel}] ${name}: ${Math.round(val).toLocaleString()} kWh (${pct}%)`;
                   }
                   return null; // 透明部分はツールチップ非表示
                 } else {
@@ -4187,7 +4117,24 @@ button, input, select {
         },
         cutout: '58%'
       }
-    });
+    };
+  }
+
+  /**
+   * 【単月】工程別電力比率多層ドーナツチャート (ユーティリティ外側円弧内訳付き)
+   */
+  function renderCategoryDoughnutChart(canvasId, categoryTotals) {
+    if (typeof Chart === 'undefined') return;
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+
+    if (categoryChartInstance) categoryChartInstance.destroy();
+    if (!categoryTotals || typeof categoryTotals !== 'object') return;
+
+    categoryChartInstance = new Chart(ctx, buildProcessDoughnutConfig(
+      name => (categoryTotals[name] ? categoryTotals[name].grandTotal : 0),
+      'ユーティリティ内訳'
+    ));
   }
 
   /**
@@ -4200,7 +4147,7 @@ button, input, select {
 
     if (annualEquipTrendChartInstance) annualEquipTrendChartInstance.destroy();
 
-    const monthLabels = ['4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月', '1月', '2月', '3月'];
+    const monthLabels = AppConfig.FISCAL_MONTH_LABELS.slice();
     const cats = equipmentSummary.categories || {};
     const totalData = cats['総電力'] ? cats['総電力'].monthly : [];
 
@@ -4220,140 +4167,15 @@ button, input, select {
       order: 0
     });
 
+    const monthlyOf = name => (cats[name] ? cats[name].monthly : []);
+
     if (viewMode === 'utilityGroup') {
-      // ユーティリティ統合モード
-      datasets.push(
-        {
-          type: 'bar',
-          label: 'ユーティリティ (kWh)',
-          data: cats['ユーティリティ'] ? cats['ユーティリティ'].monthly : [],
-          backgroundColor: 'rgba(14, 165, 233, 0.8)',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '調合抽出 (kWh)',
-          data: cats['調合抽出'] ? cats['調合抽出'].monthly : [],
-          backgroundColor: 'rgba(124, 58, 237, 0.8)',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '供給 (kWh)',
-          data: cats['供給'] ? cats['供給'].monthly : [],
-          backgroundColor: 'rgba(245, 158, 11, 0.8)',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '充填 (kWh)',
-          data: cats['充填'] ? cats['充填'].monthly : [],
-          backgroundColor: 'rgba(5, 150, 105, 0.8)',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '包装 (kWh)',
-          data: cats['包装'] ? cats['包装'].monthly : [],
-          backgroundColor: 'rgba(234, 88, 12, 0.8)',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        }
-      );
+      // ユーティリティ統合モード (工程大分類5種)
+      datasets.push(...MAIN_PROCESSES.map(p => buildStackedBar(`${p.name} (kWh)`, monthlyOf(p.name), p.stackColor, 'equipStack')));
     } else {
-      // 設備詳細内訳モード
-      datasets.push(
-        {
-          type: 'bar',
-          label: 'コンプレッサー',
-          data: cats['コンプレッサー'] ? cats['コンプレッサー'].monthly : [],
-          backgroundColor: '#38bdf8',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: 'ボイラー',
-          data: cats['ボイラー'] ? cats['ボイラー'].monthly : [],
-          backgroundColor: '#0284c7',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '純水装置',
-          data: cats['純水装置'] ? cats['純水装置'].monthly : [],
-          backgroundColor: '#0ea5e9',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '排水処理',
-          data: cats['排水処理'] ? cats['排水処理'].monthly : [],
-          backgroundColor: '#64748b',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: 'チラー',
-          data: cats['チラー'] ? cats['チラー'].monthly : [],
-          backgroundColor: '#0891b2',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '調合抽出',
-          data: cats['調合抽出'] ? cats['調合抽出'].monthly : [],
-          backgroundColor: '#7c3aed',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '供給',
-          data: cats['供給'] ? cats['供給'].monthly : [],
-          backgroundColor: '#f59e0b',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '充填',
-          data: cats['充填'] ? cats['充填'].monthly : [],
-          backgroundColor: '#059669',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        },
-        {
-          type: 'bar',
-          label: '包装',
-          data: cats['包装'] ? cats['包装'].monthly : [],
-          backgroundColor: '#ea580c',
-          borderRadius: 2,
-          stack: 'equipStack',
-          order: 1
-        }
-      );
+      // 設備詳細内訳モード (ユーティリティ内訳5種 + ユーティリティ以外の工程4種)
+      const detailSeries = [...UTILITY_BREAKDOWN, ...MAIN_PROCESSES.filter(p => p.name !== 'ユーティリティ')];
+      datasets.push(...detailSeries.map(p => buildStackedBar(p.name, monthlyOf(p.name), p.color, 'equipStack')));
     }
 
     annualEquipTrendChartInstance = new Chart(ctx, {
@@ -4412,120 +4234,10 @@ button, input, select {
     if (annualEquipDoughnutChartInstance) annualEquipDoughnutChartInstance.destroy();
 
     const cats = equipmentSummary.categories || {};
-
-    // 1. 内側メイン工程 (ユーティリティ、調合抽出、供給、充填、包装)
-    const mainKeys = ['ユーティリティ', '調合抽出', '供給', '充填', '包装'];
-    const mainColors = ['#0284c7', '#7c3aed', '#f59e0b', '#059669', '#ea580c'];
-    const mainData = mainKeys.map(k => (cats[k] ? cats[k].annualTotal : 0));
-    const mainTotalSum = mainData.reduce((a, b) => a + b, 0);
-
-    // 2. 外側ユーティリティ内訳 (コンプレッサー、ボイラー、純水装置、排水処理、チラー) + 他工程透明
-    const uBreakdownKeys = ['コンプレッサー', 'ボイラー', '純水装置', '排水処理', 'チラー'];
-    const uBreakdownColors = ['#38bdf8', '#0284c7', '#0ea5e9', '#64748b', '#0891b2'];
-    const uBreakdownData = uBreakdownKeys.map(k => (cats[k] ? cats[k].annualTotal : 0));
-    const uTotal = cats['ユーティリティ'] ? cats['ユーティリティ'].annualTotal : 0;
-
-    const outerData = [
-      ...uBreakdownData,
-      cats['調合抽出'] ? cats['調合抽出'].annualTotal : 0,
-      cats['供給'] ? cats['供給'].annualTotal : 0,
-      cats['充填'] ? cats['充填'].annualTotal : 0,
-      cats['包装'] ? cats['包装'].annualTotal : 0
-    ];
-
-    const outerColors = [
-      ...uBreakdownColors,
-      'transparent', 'transparent', 'transparent', 'transparent'
-    ];
-
-    const outerBorderColors = [
-      '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff',
-      'transparent', 'transparent', 'transparent', 'transparent'
-    ];
-
-    annualEquipDoughnutChartInstance = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        datasets: [
-          {
-            label: 'ユーティリティ内訳',
-            data: outerData,
-            backgroundColor: outerColors,
-            borderColor: outerBorderColors,
-            borderWidth: 2,
-            weight: 0.9
-          },
-          {
-            label: '工程大分類',
-            data: mainData,
-            backgroundColor: mainColors,
-            borderColor: '#ffffff',
-            borderWidth: 2,
-            weight: 1.2
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: 'right',
-            labels: {
-              color: '#334155',
-              font: { weight: '600', size: 11 },
-              generateLabels: function() {
-                const labels = [];
-                mainKeys.forEach((name, i) => {
-                  labels.push({
-                    text: `${name}`,
-                    fillStyle: mainColors[i],
-                    strokeStyle: mainColors[i],
-                    lineWidth: 1,
-                    hidden: false,
-                    index: i
-                  });
-                });
-                uBreakdownKeys.forEach((name, i) => {
-                  labels.push({
-                    text: ` └ ${name}`,
-                    fillStyle: uBreakdownColors[i],
-                    strokeStyle: uBreakdownColors[i],
-                    lineWidth: 1,
-                    hidden: false,
-                    index: 10 + i
-                  });
-                });
-                return labels;
-              }
-            }
-          },
-          tooltip: {
-            callbacks: {
-              label: function(context) {
-                const dsIndex = context.datasetIndex;
-                const dataIndex = context.dataIndex;
-                if (dsIndex === 0) {
-                  if (dataIndex < uBreakdownKeys.length) {
-                    const name = uBreakdownKeys[dataIndex];
-                    const val = context.raw || 0;
-                    const pct = uTotal > 0 ? ((val / uTotal) * 100).toFixed(1) : '0';
-                    return ` [年間内訳] ${name}: ${Math.round(val).toLocaleString()} kWh (${pct}%)`;
-                  }
-                  return null;
-                } else {
-                  const name = mainKeys[dataIndex];
-                  const val = context.raw || 0;
-                  const pct = mainTotalSum > 0 ? ((val / mainTotalSum) * 100).toFixed(1) : '0';
-                  return ` ${name}: ${Math.round(val).toLocaleString()} kWh (${pct}%)`;
-                }
-              }
-            }
-          }
-        },
-        cutout: '58%'
-      }
-    });
+    annualEquipDoughnutChartInstance = new Chart(ctx, buildProcessDoughnutConfig(
+      name => (cats[name] ? cats[name].annualTotal : 0),
+      '年間内訳'
+    ));
   }
 
   return {
@@ -4535,7 +4247,8 @@ button, input, select {
     renderAnnualTrendChart,
     renderAnnualEquipmentTrendChart,
     renderAnnualEquipmentDoughnutChart,
-    getNiceMax
+    getNiceMax,
+    getAxisMaxForPeak
   };
 
 }));
@@ -4558,24 +4271,22 @@ button, input, select {
     annualEquipmentViewMode: 'utilityGroup', // 'utilityGroup' | 'detail'
     annualData: null,                // 年間データセット
     loadedFiles: [],                 // [{ fileName, content }]
-    detectedTags: new Set(),
     currentAggregation: null,        // 単月1時間集計 (現在表示中)
-    currentCategoryResult: null,     // 単月カテゴリ集計 (現在表示中)
-    currentKpiResult: null,
     monthlyDatasets: {},             // { [ym]: { ym, aggResult, catResult, kpiResult, externalData } }
     annualDatasets: {},              // { [fiscalYear]: annualData }
     lastSelectedMonthlyYm: null,     // 直前に表示していた年月
     syncedYms: new Set(),            // スプレッドシート反映済み年月セット
     scaleConfig: null,               // グラフ目盛りスケール設定
     externalData: {
-      production: { totalBottles: 0 },
       electricity: { usedKwhThousand: 288.075, costThousandYen: 6176.992, unitPriceYenPerKwh: 21.4423 }
     }
   };
 
   // 品種8大分類キー
-  const VARIETY_KEYS = ['2.0L', '1.5L', '1.0L', '600mL丸', '500mL丸', '500mL角', '350mL', '280mL'];
+  const VARIETY_KEYS = AppConfig.VARIETY_KEYS;
   const SCALE_STORAGE_KEY = 'energy_app_chart_scale_config_v1';
+  // 目盛り自動算出の高さの目安。AppConfig.SCALE_CONFIG は起動時にGAS側の値で置き換わるため、読込時点の値を既定として保持する
+  const DEFAULT_AUTO_LAYOUT = AppConfig.SCALE_CONFIG.autoLayout;
 
   // DOM要素
   let dropzone, fileInput, progressBarContainer, progressBarFill;
@@ -4583,7 +4294,7 @@ button, input, select {
   let metricSelector, fiscalYearSelector;
   let monthlyYearMonthSelect, monthlyDataStatus;
   let scaleSettingBtn, scaleSettingModal, closeScaleModalBtn, saveScaleModalBtn, resetScaleModalBtn;
-  let scaleModeAuto, scaleModeFixed, fixedScaleInputsArea;
+  let scaleModeAuto, scaleModeFixed;
 
   /**
    * グローバルローディング表示 (通常メッセージのみ)
@@ -4689,30 +4400,8 @@ button, input, select {
     const cfg = state.scaleConfig || AppConfig.SCALE_CONFIG;
     const mode = (cfg && cfg.mode) ? cfg.mode : 'auto';
     const fixed = (cfg && cfg.fixedValues) ? cfg.fixedValues : {};
+    const layout = { ...DEFAULT_AUTO_LAYOUT, ...((AppConfig.SCALE_CONFIG && AppConfig.SCALE_CONFIG.autoLayout) || {}) };
 
-    if (mode === 'fixed') {
-      return {
-        mode: 'fixed',
-        dailyMax: fixed.daily ? fixed.daily.totalKwh : 30000,
-        annualEquipMax: fixed.annualEquipment ? fixed.annualEquipment.totalKwh : 600000,
-        getAnnualVarietyScale: function(metricKey) {
-          const isRate = ['kwhPerBottle', 'costPerBottle', 'kwhPerMinute', 'costPerMinute'].includes(metricKey);
-          const v = (fixed.annualVariety && fixed.annualVariety[metricKey] > 0)
-            ? fixed.annualVariety[metricKey]
-            : undefined;
-          if (isRate) {
-            return {
-              barMax: v,
-              lineMax: v ? Math.round(v * 0.6 * 100) / 100 : undefined
-            };
-          } else {
-            return { max: v };
-          }
-        }
-      };
-    }
-
-    // 自動最適化モード ('auto')
     // 1. 単月詳細 (日別) 最大値の走査
     let maxDaily = 0;
     Object.values(state.monthlyDatasets).forEach(ds => {
@@ -4750,7 +4439,7 @@ button, input, select {
           const mObj = modeData[m.key];
           if (!mObj || !mObj.months) return;
 
-          const isRateMetric = ['kwhPerBottle', 'costPerBottle', 'kwhPerMinute', 'costPerMinute'].includes(m.key);
+          const isRateMetric = AppConfig.RATE_METRIC_KEYS.includes(m.key);
 
           if (!metricMaxMap[m.key]) {
             metricMaxMap[m.key] = { maxMonthTotal: 0, maxVarietyVal: 0 };
@@ -4780,6 +4469,37 @@ button, input, select {
       }
     });
 
+    // 品種別トレンドグラフ (総量系) の上限。品種単体の最大値から算出する
+    // (集約グラフの上限は8品種の月計が基準のため、そのまま使うと品種単体の線が下に寄ってしまう)
+    const getTrendMax = function(metricKey) {
+      const dataStats = metricMaxMap[metricKey];
+      return dataStats ? ChartManager.getAxisMaxForPeak(dataStats.maxVarietyVal, layout.trendPeakRatio) : undefined;
+    };
+
+    // 固定値モード ('fixed'): 集約グラフ・設備別・日別は設定値を使う。トレンドグラフは入力欄が無いため、常にデータから算出する
+    if (mode === 'fixed') {
+      return {
+        mode: 'fixed',
+        dailyMax: fixed.daily ? fixed.daily.totalKwh : 30000,
+        annualEquipMax: fixed.annualEquipment ? fixed.annualEquipment.totalKwh : 600000,
+        getAnnualVarietyScale: function(metricKey) {
+          const isRate = AppConfig.RATE_METRIC_KEYS.includes(metricKey);
+          const v = (fixed.annualVariety && fixed.annualVariety[metricKey] > 0)
+            ? fixed.annualVariety[metricKey]
+            : undefined;
+          if (isRate) {
+            return {
+              barMax: v,
+              lineMax: v ? Math.round(v * 0.6 * 100) / 100 : undefined
+            };
+          } else {
+            return { max: v, trendMax: getTrendMax(metricKey) };
+          }
+        }
+      };
+    }
+
+    // 自動最適化モード ('auto')
     const powerMonthMax = metricMaxMap['powerKwh'] ? metricMaxMap['powerKwh'].maxMonthTotal : 0;
     const synchronizedPowerMax = Math.max(maxEquipTotal, powerMonthMax);
     const autoPowerMax = synchronizedPowerMax > 0 && typeof ChartManager !== 'undefined' && ChartManager.getNiceMax
@@ -4791,24 +4511,24 @@ button, input, select {
       annualEquipMax: autoPowerMax,
       getAnnualVarietyScale: function(metricKey) {
         if (metricKey === 'powerKwh') {
-          return { max: autoPowerMax };
+          return { max: autoPowerMax, trendMax: getTrendMax(metricKey) };
         }
-        const isRate = ['kwhPerBottle', 'costPerBottle', 'kwhPerMinute', 'costPerMinute'].includes(metricKey);
+        const isRate = AppConfig.RATE_METRIC_KEYS.includes(metricKey);
         const dataStats = metricMaxMap[metricKey];
         if (!dataStats || typeof ChartManager === 'undefined' || !ChartManager.getNiceMax) return {};
 
         if (isRate) {
-          // 棒グラフ（左軸・各品種）は実最大値の2.0倍で画面下半分 (0〜45%) に抑える
-          const niceBar = dataStats.maxVarietyVal > 0 ? ChartManager.getNiceMax(dataStats.maxVarietyVal * 2.0) : undefined;
-          // 月計折れ線グラフ（右軸・全体平均）は実最大値の1.25倍で画面上部 (55〜75%) を推移させ、棒グラフと重ならないようにする
-          const niceLine = dataStats.maxMonthTotal > 0 ? ChartManager.getNiceMax(dataStats.maxMonthTotal * 1.25) : undefined;
+          // 棒グラフ（左軸・各品種）と月計折れ線グラフ（右軸・全体平均）は別々の軸を持つ。
+          // 棒の最大を軸の中ほど、折れ線の最大を軸の上部に置き、棒を大きく見せつつ折れ線と重なりにくくする
+          // (高さの目安は SCALE_CONFIG.autoLayout で調整する)
           return {
-            barMax: niceBar,
-            lineMax: niceLine
+            barMax: ChartManager.getAxisMaxForPeak(dataStats.maxVarietyVal, layout.rateBarPeakRatio),
+            lineMax: ChartManager.getAxisMaxForPeak(dataStats.maxMonthTotal, layout.rateLinePeakRatio)
           };
         } else {
           return {
-            max: dataStats.maxMonthTotal > 0 ? ChartManager.getNiceMax(dataStats.maxMonthTotal) : undefined
+            max: dataStats.maxMonthTotal > 0 ? ChartManager.getNiceMax(dataStats.maxMonthTotal) : undefined,
+            trendMax: getTrendMax(metricKey)
           };
         }
       }
@@ -4937,7 +4657,6 @@ button, input, select {
   function updateSyncStatusUI() {
     const badge = document.getElementById('syncStatusBadge');
     const textElem = document.getElementById('syncStatusText');
-    const syncButton = document.getElementById('syncBtn');
     if (!badge || !textElem) return;
 
     const yms = Object.keys(state.monthlyDatasets);
@@ -4945,9 +4664,9 @@ button, input, select {
 
     if (totalCount === 0) {
       badge.style.display = 'none';
-      if (syncButton) {
-        syncButton.disabled = true;
-        syncButton.textContent = '☁️ スプレッドシートへ反映';
+      if (syncBtn) {
+        syncBtn.disabled = true;
+        syncBtn.textContent = '☁️ スプレッドシートへ反映';
       }
       return;
     }
@@ -4961,16 +4680,16 @@ button, input, select {
     if (pendingCount > 0) {
       badge.classList.add('has-pending');
       textElem.textContent = `読込済: 計 ${totalCount}ヶ月 (未反映: ${pendingCount}ヶ月 / 反映済: ${syncedCount}ヶ月)`;
-      if (syncButton) {
-        syncButton.disabled = false;
-        syncButton.textContent = `☁️ スプレッドシートへ反映 (${pendingCount}ヶ月分)`;
+      if (syncBtn) {
+        syncBtn.disabled = false;
+        syncBtn.textContent = `☁️ スプレッドシートへ反映 (${pendingCount}ヶ月分)`;
       }
     } else {
       badge.classList.add('all-synced');
       textElem.textContent = `読込済: 計 ${totalCount}ヶ月 (全 ${syncedCount}ヶ月 反映済み)`;
-      if (syncButton) {
-        syncButton.disabled = false;
-        syncButton.textContent = `☁️ スプレッドシートへ反映 (全月反映済)`;
+      if (syncBtn) {
+        syncBtn.disabled = false;
+        syncBtn.textContent = `☁️ スプレッドシートへ反映 (全月反映済)`;
       }
     }
   }
@@ -4998,7 +4717,6 @@ button, input, select {
             }
 
             if (res.savedYms && res.savedYms.length > 0) {
-              console.log('Restored saved datasets from spreadsheet:', res.savedYms);
               // 既存の monthlyDatasets とマージ
               Object.keys(res.monthlySummary).forEach(ym => {
               if (!state.monthlyDatasets[ym]) {
@@ -5081,7 +4799,6 @@ button, input, select {
     resetScaleModalBtn = document.getElementById('resetScaleModalBtn');
     scaleModeAuto = document.getElementById('scaleModeAuto');
     scaleModeFixed = document.getElementById('scaleModeFixed');
-    fixedScaleInputsArea = document.getElementById('fixedScaleInputsArea');
   }
 
   function setupEventListeners() {
@@ -5431,7 +5148,7 @@ button, input, select {
     // タイトル更新
     setElemText('currentMetricLabel', `${metricConfig.name} (${metricConfig.unit})`);
     setElemText('tableMetricTitle', `${metricConfig.name} [${metricConfig.unit}]`);
-    const isRateMetric = ['kwhPerBottle', 'costPerBottle', 'kwhPerMinute', 'costPerMinute'].includes(metricKey);
+    const isRateMetric = AppConfig.RATE_METRIC_KEYS.includes(metricKey);
     setElemText('annualStackedChartTitle', isRateMetric 
       ? '📊 月別電力使用量集約グラフ (8品種別 ＆ 全体平均折れ線)' 
       : '📊 月別電力使用量集約グラフ (8品種積み上げ)');
@@ -5474,19 +5191,6 @@ button, input, select {
     const labels = state.annualData.monthLabels;
     const digits = metricConfig.digits;
 
-    let runningSum = 0;
-    const currentMode = state.currentAnnualMode;
-    const modeObj = (state.annualData.modes && state.annualData.modes[currentMode]) || {};
-    const powerMonths = modeObj.powerKwh ? modeObj.powerKwh.months : null;
-    const bottleMonths = modeObj.productionBottles ? modeObj.productionBottles.months : null;
-    const timeMonths = modeObj.operationMin ? modeObj.operationMin.months : null;
-    const costMonths = modeObj.powerCostYen ? modeObj.powerCostYen.months : null;
-
-    let cumPower = 0;
-    let cumBottles = 0;
-    let cumTime = 0;
-    let cumCost = 0;
-
     // 各月行 (4月〜3月)
     months.forEach((ym, idx) => {
       const mObj = metricData.months[ym] || { cumulativeTotal: 0, monthlyTotal: 0, varieties: {} };
@@ -5495,38 +5199,11 @@ button, input, select {
       const hasData = mObj.hasData !== false && mObj.monthlyTotal !== null;
       const formatVal = (v) => {
         if (v === null || v === undefined) return '<span style="color:var(--text-light);font-weight:normal;">---</span>';
-        return typeof v === 'number' ? v.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : v;
+        return typeof v === 'number' ? formatNumber(v, digits) : v;
       };
 
-      // 累計値の取得または動的算出 (データが存在する月のみ累積)
-      let cumVal = mObj.cumulativeTotal;
-      if (!hasData) {
-        cumVal = null;
-      } else if (cumVal === undefined || cumVal === null) {
-        if (['powerKwh', 'operationMin', 'productionBottles', 'powerCostYen'].includes(state.currentMetric)) {
-          runningSum += (mObj.monthlyTotal || 0);
-          cumVal = runningSum;
-        } else if (state.currentMetric === 'kwhPerBottle') {
-          cumPower += (powerMonths && powerMonths[ym] ? powerMonths[ym].monthlyTotal : 0);
-          cumBottles += (bottleMonths && bottleMonths[ym] ? bottleMonths[ym].monthlyTotal : 0);
-          cumVal = cumBottles > 0 ? (cumPower / cumBottles) : 0;
-        } else if (state.currentMetric === 'kwhPerMinute') {
-          cumPower += (powerMonths && powerMonths[ym] ? powerMonths[ym].monthlyTotal : 0);
-          cumTime += (timeMonths && timeMonths[ym] ? timeMonths[ym].monthlyTotal : 0);
-          cumVal = cumTime > 0 ? (cumPower / cumTime) : 0;
-        } else if (state.currentMetric === 'costPerBottle') {
-          cumCost += (costMonths && costMonths[ym] ? costMonths[ym].monthlyTotal : 0);
-          cumBottles += (bottleMonths && bottleMonths[ym] ? bottleMonths[ym].monthlyTotal : 0);
-          cumVal = cumBottles > 0 ? (cumCost / cumBottles) : 0;
-        } else if (state.currentMetric === 'costPerMinute') {
-          cumCost += (costMonths && costMonths[ym] ? costMonths[ym].monthlyTotal : 0);
-          cumTime += (timeMonths && timeMonths[ym] ? timeMonths[ym].monthlyTotal : 0);
-          cumVal = cumTime > 0 ? (cumCost / cumTime) : 0;
-        } else {
-          runningSum += (mObj.monthlyTotal || 0);
-          cumVal = runningSum;
-        }
-      }
+      // 累計値 (データが存在しない月は空欄)
+      const cumVal = hasData ? mObj.cumulativeTotal : null;
 
       let html = `
         <td style="font-weight: 600;">${labels[idx]} (${ym})</td>
@@ -5551,7 +5228,7 @@ button, input, select {
 
     const formatVal = (v) => {
       if (v === null || v === undefined) return '0';
-      return typeof v === 'number' ? v.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : v;
+      return typeof v === 'number' ? formatNumber(v, digits) : v;
     };
 
     let totHtml = `
@@ -5586,8 +5263,8 @@ button, input, select {
     const waterHours = ops.waterHours ? ops.waterHours.annualTotal : 0;
 
     // 1. KPIサマリーカード
-    setElemText('kpiEquipTotalKwh', totalPower.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
-    setElemText('kpiEquipUtilityKwh', utilPower.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+    setElemText('kpiEquipTotalKwh', formatNumber(totalPower, 1));
+    setElemText('kpiEquipUtilityKwh', formatNumber(utilPower, 1));
     const utilRatio = totalPower > 0 ? ((utilPower / totalPower) * 100).toFixed(1) : '0.0';
     setElemText('kpiEquipUtilityRatio', `${utilRatio}%`);
 
@@ -5606,11 +5283,11 @@ button, input, select {
     });
     setElemText('kpiEquipTopName', topName);
     const topRatio = totalPower > 0 ? ((topVal / totalPower) * 100).toFixed(1) : '0.0';
-    setElemText('kpiEquipTopKwh', topVal.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+    setElemText('kpiEquipTopKwh', formatNumber(topVal, 1));
     setElemText('kpiEquipTopRatio', `${topRatio}%`);
 
-    setElemText('kpiEquipFillingHours', fillingHours.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
-    setElemText('kpiEquipWaterHours', waterHours.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+    setElemText('kpiEquipFillingHours', formatNumber(fillingHours, 1));
+    setElemText('kpiEquipWaterHours', formatNumber(waterHours, 1));
 
     // 2. チャート描画
     if (window.ChartManager) {
@@ -5674,7 +5351,7 @@ button, input, select {
       }
 
       const trClass = row.className || '';
-      const valFormatted = annualVal.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+      const valFormatted = formatNumber(annualVal, 1);
 
       html += `<tr class="${trClass}">
         <td class="font-medium text-left">${row.label}</td>
@@ -5684,7 +5361,7 @@ button, input, select {
       for (let i = 0; i < 12; i++) {
         const mVal = monthlyVals[i] !== undefined && monthlyVals[i] !== null ? monthlyVals[i] : null;
         const mFormatted = mVal !== null
-          ? mVal.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+          ? formatNumber(mVal, 1)
           : '<span style="color:var(--text-light);font-weight:normal;">---</span>';
         html += `<td class="text-right font-tabular">${mFormatted}</td>`;
       }
@@ -5692,10 +5369,6 @@ button, input, select {
     });
     tbody.innerHTML = html;
   }
-
-  // =========================================================================
-  // 単月詳細データ処理＆ETL連携ロジック
-  // =========================================================================
 
   // =========================================================================
   // 単月詳細データ処理＆ETL連携ロジック (複数月管理・切替対応)
@@ -5740,8 +5413,6 @@ button, input, select {
   function renderSingleMonthData(monthDataset) {
     if (!monthDataset) return;
     state.currentAggregation = monthDataset.aggResult || null;
-    state.currentCategoryResult = monthDataset.catResult || null;
-    state.currentKpiResult = monthDataset.kpiResult || null;
 
     const catResult = monthDataset.catResult || {};
     const dailyTotals = catResult.categoryDailyTotals || [];
@@ -5949,7 +5620,6 @@ button, input, select {
     // 新規CSV投入時は、過去セッションの loadedFiles をリフレッシュ
     if (txtCsvFiles.length > 0) {
       state.loadedFiles = [];
-      state.detectedTags.clear();
       document.querySelectorAll('.tag-badge:not(.excel)').forEach(el => el.classList.remove('detected'));
     }
 
@@ -5961,16 +5631,13 @@ button, input, select {
         const buffer = await readFileAsArrayBuffer(ef);
         if (!buffer) continue;
         const normName = ef.name.normalize('NFC');
-        const lowerNorm = normName.toLowerCase();
         state.loadedExcelFiles.push({ name: normName, buffer });
 
-        const isEnergy = lowerNorm.includes('エネルギー') || lowerNorm.includes('かつらぎ') || lowerNorm.includes('energy');
-        const isPet = lowerNorm.includes('月報') || lowerNorm.includes('pet');
-
-        if (isEnergy) {
+        const excelKind = detectExcelKind(normName);
+        if (excelKind === 'energy') {
           updateTagBadge('tagEnergy', true);
           showToast(`エネルギー計算表 (${normName}) を読み込みました`, 'success');
-        } else if (isPet) {
+        } else if (excelKind === 'pet') {
           updateTagBadge('tagPet', true);
           showToast(`月報PET (${normName}) を読み込みました`, 'success');
         } else {
@@ -5991,7 +5658,6 @@ button, input, select {
           state.loadedFiles.push({ fileName: f.name, content: text });
           const tagType = CsvParser.detectTagType(f.name, text.slice(0, 3000).split(/\r?\n/));
           if (tagType) {
-            state.detectedTags.add(tagType);
             updateTagBadge(tagType, true);
           }
         }
@@ -6023,6 +5689,52 @@ button, input, select {
   }
 
   /**
+   * Excelファイル名から種別を判定する
+   * @param {string} normName NFC正規化済みのファイル名
+   * @returns {string|null} 'energy' (エネルギー計算表) / 'pet' (月報PET) / null (対象外)
+   */
+  function detectExcelKind(normName) {
+    const lowerNorm = normName.toLowerCase();
+    if (lowerNorm.includes('エネルギー') || lowerNorm.includes('かつらぎ') || lowerNorm.includes('energy')) return 'energy';
+    if (lowerNorm.includes('月報') || lowerNorm.includes('pet')) return 'pet';
+    return null;
+  }
+
+  /**
+   * 読み込み済みExcelから、対象年月の外部データ（生産本数・電力量単価）を抽出する
+   * 該当データが取れなかった項目は初期値（本数0、既定の電力量単価）のまま返す
+   * @param {string} ym 'YYYYMM'
+   * @returns {Object} { production, electricity }
+   */
+  function extractExternalDataForMonth(ym) {
+    let production = { totalBottles: 0, varieties: {} };
+    let electricity = { ...state.externalData.electricity };
+
+    for (const ef of (state.loadedExcelFiles || [])) {
+      const excelKind = detectExcelKind(ef.name);
+      try {
+        if (excelKind === 'energy') {
+          const res = ExcelReader.parseEnergyCalculationTable(ef.buffer, ym);
+          if (res && res.unitPriceYenPerKwh) {
+            electricity = res;
+            updateTagBadge('tagEnergy', true);
+          }
+        } else if (excelKind === 'pet') {
+          const res = ExcelReader.parsePetMonthlyReport(ef.buffer, ym);
+          if (res && (res.totalBottles > 0 || Object.keys(res.varieties).length > 0)) {
+            production = res;
+            updateTagBadge('tagPet', true);
+          }
+        }
+      } catch (err) {
+        console.warn(`Excel parse error for ${ym}:`, err);
+      }
+    }
+
+    return { production, electricity };
+  }
+
+  /**
    * 読み込み済みの全年月データセットに対して、外部Excelデータ（生産本数・単価）を再抽出し、KPIを再計算する
    */
   function recalculateAllLoadedMonths() {
@@ -6033,31 +5745,7 @@ button, input, select {
       const ds = state.monthlyDatasets[ym];
       if (!ds) return;
 
-      let production = { totalBottles: 0, varieties: {} };
-      let electricity = { ...state.externalData.electricity };
-
-      if (state.loadedExcelFiles && state.loadedExcelFiles.length > 0) {
-        for (const ef of state.loadedExcelFiles) {
-          const lowerNorm = ef.name.toLowerCase();
-          try {
-            if (lowerNorm.includes('エネルギー') || lowerNorm.includes('かつらぎ') || lowerNorm.includes('energy')) {
-              const res = ExcelReader.parseEnergyCalculationTable(ef.buffer, ym);
-              if (res && res.unitPriceYenPerKwh) {
-                electricity = res;
-                updateTagBadge('tagEnergy', true);
-              }
-            } else if (lowerNorm.includes('月報') || lowerNorm.includes('pet')) {
-              const res = ExcelReader.parsePetMonthlyReport(ef.buffer, ym);
-              if (res && (res.totalBottles > 0 || Object.keys(res.varieties).length > 0)) {
-                production = res;
-                updateTagBadge('tagPet', true);
-              }
-            }
-          } catch (err) {
-            console.warn(`Excel recalculate error for ${ym}:`, err);
-          }
-        }
-      }
+      const { production, electricity } = extractExternalDataForMonth(ym);
 
       const kpiResult = KpiService.calculateKpi(
         ds.catResult.categoryMonthlyTotals,
@@ -6096,7 +5784,7 @@ button, input, select {
     yms.forEach(ym => {
       const yr = parseInt(ym.slice(0, 4), 10);
       const mo = parseInt(ym.slice(4, 6), 10);
-      const fy = mo >= 4 ? yr : yr - 1;
+      const fy = AppConfig.getFiscalYear(yr, mo);
       detectedYearsSet.add(String(fy));
     });
 
@@ -6141,31 +5829,7 @@ button, input, select {
         const catResult = CategoryService.aggregateCategories(aggResult.rows, aggResult.monthlyColumnSums);
 
         // 対象年月に応じた外部Excelデータを抽出
-        let production = { totalBottles: 0, varieties: {} };
-        let electricity = { ...state.externalData.electricity };
-
-        if (state.loadedExcelFiles && state.loadedExcelFiles.length > 0) {
-          for (const ef of state.loadedExcelFiles) {
-            const lowerNorm = ef.name.toLowerCase();
-            try {
-              if (lowerNorm.includes('エネルギー') || lowerNorm.includes('かつらぎ') || lowerNorm.includes('energy')) {
-                const res = ExcelReader.parseEnergyCalculationTable(ef.buffer, ym);
-                if (res && res.unitPriceYenPerKwh) {
-                  electricity = res;
-                  updateTagBadge('tagEnergy', true);
-                }
-              } else if (lowerNorm.includes('月報') || lowerNorm.includes('pet')) {
-                const res = ExcelReader.parsePetMonthlyReport(ef.buffer, ym);
-                if (res && (res.totalBottles > 0 || Object.keys(res.varieties).length > 0)) {
-                  production = res;
-                  updateTagBadge('tagPet', true);
-                }
-              }
-            } catch (err) {
-              console.warn(`Excel parse error for ${ym}:`, err);
-            }
-          }
-        }
+        const { production, electricity } = extractExternalDataForMonth(ym);
 
         const kpiResult = KpiService.calculateKpi(
           catResult.categoryMonthlyTotals,
@@ -6227,7 +5891,6 @@ button, input, select {
       syncTargets = allTargetYms;
     }
 
-    const syncBtn = document.getElementById('syncBtn');
     if (syncBtn) syncBtn.disabled = true;
 
     const totalCount = syncTargets.length;
@@ -6420,7 +6083,7 @@ button, input, select {
    */
   function buildLocalExportSheets() {
     const categories = (typeof AppConfig !== 'undefined' && AppConfig.CATEGORIES) || [];
-    const varietyKeys = (typeof AppConfig !== 'undefined' && AppConfig.VARIETY_KEYS) || ['2.0L', '1.5L', '1.0L', '600mL丸', '500mL丸', '500mL角', '350mL', '280mL'];
+    const varietyKeys = VARIETY_KEYS;
     const yms = Object.keys(state.monthlyDatasets || {}).sort();
 
     // 1. 日別集約
@@ -6508,6 +6171,14 @@ button, input, select {
   }
 
   // 補助関数
+
+  /**
+   * 数値を3桁区切り・小数桁固定の文字列に整形する
+   */
+  function formatNumber(value, digits) {
+    return value.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  }
+
   function readFileAsText(file) {
     return new Promise(resolve => {
       try {
