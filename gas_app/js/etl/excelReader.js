@@ -15,10 +15,28 @@
 }(typeof self !== 'undefined' ? self : this, function (XLSXLib, AppConfig) {
 
   /**
+   * 対象年度のシート名を探す
+   * シート名が年度と完全一致するものを優先し、無ければ年度の数字を含むもの (例: '月報PET(2024）') を返す。
+   * 見つからない場合に他のシートで代用すると、別の年度の値を取り込んでしまうため、代用はしない
+   * @param {Array<string>} sheetNames
+   * @param {number} fiscalYear 年度 (例: 2024)
+   * @returns {string|undefined} 見つからない場合は undefined
+   */
+  function findFiscalYearSheet(sheetNames, fiscalYear) {
+    const fy = String(fiscalYear);
+    const exact = sheetNames.find(name => name.trim() === fy);
+    if (exact) return exact;
+    // 他の数字の一部として含まれる場合 (例: '20245') は対象にしない
+    const pattern = new RegExp(`(^|\\D)${fy}(\\D|$)`);
+    return sheetNames.find(name => pattern.test(name));
+  }
+
+  /**
    * かつらぎ工場エネルギー計算表から特定年月の電気料金データを抽出する
    * @param {ArrayBuffer|Uint8Array|Workbook} workbookData
    * @param {string} yearMonth 'YYYYMM' (例: '202404', '202503')
-   * @returns {Object} { usedKwhThousand, costThousandYen, unitPriceYenPerKwh }
+   * @returns {Object} { usedKwhThousand, costThousandYen, unitPriceYenPerKwh, sheetFound }
+   *   対象年度のシートが無い場合は sheetFound が false で、各値は null
    */
   function parseEnergyCalculationTable(workbookData, yearMonth) {
     const XLSX = XLSXLib || (typeof window !== 'undefined' ? window.XLSX : (typeof global !== 'undefined' ? global.XLSX : null));
@@ -34,17 +52,8 @@
     let usedKwh = null;
     let costThousand = null;
 
-    // 1. 対象年度シートの優先探索 (例: '2024' を最優先)
-    let targetSheetName = wb.SheetNames.find(name => name.trim() === String(nendo));
-    if (!targetSheetName) {
-      targetSheetName = wb.SheetNames.find(name => name.includes(String(nendo)));
-    }
-    if (!targetSheetName) {
-      targetSheetName = wb.SheetNames.find(name => name.includes('年度推移') || name.includes('電力量'));
-    }
-    if (!targetSheetName && wb.SheetNames.length > 0) {
-      targetSheetName = wb.SheetNames[0];
-    }
+    // 1. 対象年度シートの探索 (例: '2024')
+    const targetSheetName = findFiscalYearSheet(wb.SheetNames, nendo);
 
     if (targetSheetName) {
       const ws = wb.Sheets[targetSheetName];
@@ -82,7 +91,8 @@
       yearMonth,
       usedKwhThousand: usedKwh,
       costThousandYen: costThousand,
-      unitPriceYenPerKwh: unitPrice
+      unitPriceYenPerKwh: unitPrice,
+      sheetFound: !!targetSheetName
     };
   }
 
@@ -90,7 +100,8 @@
    * 月報PETから特定年月の品種別生産本数を抽出する
    * @param {ArrayBuffer|Uint8Array|Workbook} workbookData
    * @param {string} yearMonth 'YYYYMM'
-   * @returns {Object} { totalBottles, varieties: { '101': count, ... } }
+   * @returns {Object} { totalBottles, varieties: { '2.0L': count, ... }, sheetFound }
+   *   対象年度のシートが無い場合は sheetFound が false、対象月が未入力の場合は totalBottles が 0
    */
   function parsePetMonthlyReport(workbookData, yearMonth) {
     const XLSX = XLSXLib || (typeof window !== 'undefined' ? window.XLSX : (typeof global !== 'undefined' ? global.XLSX : null));
@@ -128,19 +139,14 @@
     }
 
     // 1. 年度シートの探索 (例: '月報PET(2024）', 'PET(2024 4-3)', '2024')
-    let targetSheetName = wb.SheetNames.find(name => name.includes(String(nendo)));
-    if (!targetSheetName) {
-      targetSheetName = wb.SheetNames.find(name => name.includes(String(targetYear)));
-    }
-    if (!targetSheetName && wb.SheetNames.length > 0) {
-      targetSheetName = wb.SheetNames[0];
-    }
+    const targetSheetName = findFiscalYearSheet(wb.SheetNames, nendo);
 
     if (targetSheetName) {
       const ws = wb.Sheets[targetSheetName];
       const data = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
 
-      // パターンA: 12列横並びブロック帳票 (4月=Col B(1), 5月=Col N(13), 6月=Col Z(25) ...)
+      // 12列横並びブロック帳票 (4月=Col B(1), 5月=Col N(13), 6月=Col Z(25) ...)
+      // 対象月のブロック内に値が無い場合は 0 のままとする (ブロックの外を探すと、無関係なセルの値を拾ってしまう)
       const mIdx = AppConfig.FISCAL_MONTH_ORDER.indexOf(targetMonth);
       if (mIdx >= 0) {
         const baseCol = mIdx * 12 + 1; // 各月ブロック開始列 (B=1, N=13, Z=25...)
@@ -240,27 +246,13 @@
           totalBottles = vSum;
         }
       }
-
-      // パターンB: 従来のフォールバック走査
-      if (totalBottles === 0) {
-        const monthColIdx = getFiscalMonthColIndex(targetMonth);
-        for (let r = 0; r < data.length; r++) {
-          const row = data[r] || [];
-          const nameCell = String(row[0] || row[1] || '');
-          if (nameCell.includes('本数') || nameCell.includes('実績（本') || nameCell.includes('長角') || nameCell.includes('丸')) {
-            const val = parseFloat(row[monthColIdx]);
-            if (!isNaN(val) && val > 0) {
-              totalBottles += val;
-            }
-          }
-        }
-      }
     }
 
     return {
       yearMonth,
       totalBottles,
-      varieties
+      varieties,
+      sheetFound: !!targetSheetName
     };
   }
 

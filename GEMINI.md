@@ -42,7 +42,8 @@
 │   ├── verify_output.py                 # 出力と正解データの数値突合
 │   ├── verify_variety_fixes.js          # 品種マスター・操業モード分離の検証
 │   ├── verify_variety_and_restore.js    # 復元データからの年間集約の検証
-│   └── verify_config_sync.js            # Config.gs と js/config.js の二重定義の一致検証
+│   ├── verify_config_sync.js            # Config.gs と js/config.js の二重定義の一致検証
+│   └── verify_excel_reader.js           # 月報PET・エネルギー計算表の解析の検証 (模擬シートを使用)
 ├── screenshot/                          # 画面確認時のスクリーンショット
 │   └── YYYYMMDDhhmm_変更内容/           # 作業ごとのフォルダ (history/ の履歴ファイルと同じ名前)
 ├── gas_app/                             # アプリケーション本体
@@ -99,7 +100,7 @@ GASへデプロイするのは `Code.gs`、`Config.gs`、`index.html` の3ファ
 - 設定の二重定義: `gas_app/Config.gs` と `gas_app/js/config.js` には同じマスター定義（品種キー、品種合算マッピング、カテゴリ、設備90列、目盛り設定）がある。片方を変えたらもう一方も同じ内容に揃え、`node tests/verify_config_sync.js` で一致を確認すること
 - テスト: 集計ロジック（`js/etl/`、`js/services/`、`js/config.js`）や `Config.gs` を変更したら、次を実行すること
   - `node tests/test_etl_runner.js` → `python3 tests/verify_output.py tests/test_output_202503.json`（`reference/` の実データが必要）
-  - `node tests/verify_variety_fixes.js`、`node tests/verify_variety_and_restore.js`、`node tests/verify_config_sync.js`
+  - `node tests/verify_variety_fixes.js`、`node tests/verify_variety_and_restore.js`、`node tests/verify_config_sync.js`、`node tests/verify_excel_reader.js`
 - スクリーンショット:
   - 画面確認用のスクリーンショットや HTML は、作業中は `screenshot/` の直下に採取すること
   - 検証が終わり完了報告をする前に、`screenshot/YYYYMMDDhhmm_変更内容/`（その作業の `history/` ファイルと同じ名前）を作成して移動すること

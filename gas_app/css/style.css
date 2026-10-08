@@ -609,6 +609,13 @@ button, input, select {
   border-left: 4px solid var(--danger);
 }
 
+/* 警告は文が長くなるため、最大幅を設けて折り返す */
+.toast.warning {
+  border-left: 4px solid var(--warning);
+  max-width: min(640px, calc(100vw - 3rem));
+  line-height: 1.5;
+}
+
 .toast.info {
   border-left: 4px solid var(--primary);
 }

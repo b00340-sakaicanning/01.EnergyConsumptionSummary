@@ -1416,8 +1416,17 @@
       hideProgress();
       const loadedCount = Object.keys(state.monthlyDatasets).length;
       if (loadedCount > 0) {
-        recalculateAllLoadedMonths();
-        showToast(`エネルギー計算表および月報PETのデータを全 ${loadedCount} ヶ月分へ反映しました`, 'success');
+        const missingByYm = recalculateAllLoadedMonths();
+        // 読み込まれている種類のExcelについて、実際に値を取得できた月数を通知する
+        const loadedKinds = new Set((state.loadedExcelFiles || []).map(ef => detectExcelKind(ef.name)));
+        const countFound = (key) => loadedCount - Object.values(missingByYm).filter(m => m[key]).length;
+        const parts = [];
+        if (loadedKinds.has('pet')) parts.push(`本数 ${countFound('production')}/${loadedCount} ヶ月`);
+        if (loadedKinds.has('energy')) parts.push(`電力量単価 ${countFound('electricity')}/${loadedCount} ヶ月`);
+        if (parts.length > 0) {
+          showToast(`Excelのデータを読込済みの月へ反映しました（取得できた月: ${parts.join('、')}）`, 'success');
+        }
+        notifyMissingExternalData(missingByYm);
       } else {
         showToast('エクセルファイルを読み込みました。CSVデータを投入してください', 'info');
       }
@@ -1444,50 +1453,136 @@
 
   /**
    * 読み込み済みExcelから、対象年月の外部データ（生産本数・電力量単価）を抽出する
-   * 該当データが取れなかった項目は初期値（本数0、既定の電力量単価）のまま返す
+   * - その種類のExcelが読み込まれている場合: 取得できた値を使う。取得できなければ初期値（本数0、既定の電力量単価）とし、missing に理由を入れる
+   * - その種類のExcelが読み込まれていない場合: その月の既存の値（スプレッドシートから復元した値を含む）を引き継ぐ。無ければ初期値
    * @param {string} ym 'YYYYMM'
-   * @returns {Object} { production, electricity }
+   * @param {Object} [previous] その月の既存の externalData
+   * @returns {Object} { production, electricity, missing: { production, electricity } }
+   *   missing の各値は null (取得できた、またはExcel未読込) / 'noSheet' (対象年度のシートが無い) / 'noData' (対象月の値が無い)
    */
-  function extractExternalDataForMonth(ym) {
-    let production = { totalBottles: 0, varieties: {} };
-    let electricity = { ...state.externalData.electricity };
+  function extractExternalDataForMonth(ym, previous) {
+    const defaults = {
+      production: { totalBottles: 0, varieties: {} },
+      electricity: { ...state.externalData.electricity }
+    };
+    const found = { production: null, electricity: null };
+    const loaded = { production: false, electricity: false };
+    const missing = { production: null, electricity: null };
 
     for (const ef of (state.loadedExcelFiles || [])) {
       const excelKind = detectExcelKind(ef.name);
+      const key = excelKind === 'energy' ? 'electricity' : (excelKind === 'pet' ? 'production' : null);
+      if (!key) continue;
+      loaded[key] = true;
       try {
         if (excelKind === 'energy') {
-          const res = ExcelReader.parseEnergyCalculationTable(ef.buffer, ym);
-          if (res && res.unitPriceYenPerKwh) {
-            electricity = res;
+          const { sheetFound, ...res } = ExcelReader.parseEnergyCalculationTable(ef.buffer, ym);
+          if (res.unitPriceYenPerKwh) {
+            found.electricity = res;
             updateTagBadge('tagEnergy', true);
+          } else {
+            missing.electricity = sheetFound ? 'noData' : 'noSheet';
           }
-        } else if (excelKind === 'pet') {
-          const res = ExcelReader.parsePetMonthlyReport(ef.buffer, ym);
-          if (res && (res.totalBottles > 0 || Object.keys(res.varieties).length > 0)) {
-            production = res;
+        } else {
+          const { sheetFound, ...res } = ExcelReader.parsePetMonthlyReport(ef.buffer, ym);
+          if (res.totalBottles > 0 || Object.keys(res.varieties).length > 0) {
+            found.production = res;
             updateTagBadge('tagPet', true);
+          } else {
+            missing.production = sheetFound ? 'noData' : 'noSheet';
           }
         }
       } catch (err) {
         console.warn(`Excel parse error for ${ym}:`, err);
+        missing[key] = missing[key] || 'noData';
       }
     }
 
-    return { production, electricity };
+    const prev = previous || {};
+    const pick = (key) => found[key] || (loaded[key] ? defaults[key] : (prev[key] || defaults[key]));
+    return {
+      production: pick('production'),
+      electricity: pick('electricity'),
+      missing: {
+        production: found.production ? null : missing.production,
+        electricity: found.electricity ? null : missing.electricity
+      }
+    };
+  }
+
+  /**
+   * スプレッドシートへ保存される外部データの値（総本数、品種別本数、電力量単価）を比較用の文字列にする
+   */
+  function externalDataSignature(externalData) {
+    const prod = (externalData && externalData.production) || {};
+    const ele = (externalData && externalData.electricity) || {};
+    const varieties = VARIETY_KEYS.map(k => (prod.varieties && prod.varieties[k]) || 0);
+    return JSON.stringify([prod.totalBottles || 0, varieties, Math.round((ele.unitPriceYenPerKwh || 0) * 10000) / 10000]);
+  }
+
+  /**
+   * 'YYYYMM' の一覧を表示用の文字列にする（連続する月は「2023年4月〜2024年3月」、それ以外は列挙）
+   */
+  function formatYmList(yms) {
+    const sorted = yms.slice().sort();
+    const label = ym => `${ym.slice(0, 4)}年${parseInt(ym.slice(4, 6), 10)}月`;
+    const serial = ym => parseInt(ym.slice(0, 4), 10) * 12 + parseInt(ym.slice(4, 6), 10);
+    const isContiguous = sorted.every((ym, i) => i === 0 || serial(ym) - serial(sorted[i - 1]) === 1);
+    if (sorted.length >= 3 && isContiguous) return `${label(sorted[0])}〜${label(sorted[sorted.length - 1])}`;
+    if (sorted.length <= 4) return sorted.map(label).join('、');
+    return `${sorted.slice(0, 3).map(label).join('、')} ほか`;
+  }
+
+  /**
+   * Excelから本数・電力量単価を取得できなかった月を、まとめて警告表示する
+   * @param {Object} missingByYm { [ym]: { production, electricity } } (extractExternalDataForMonth の missing)
+   */
+  function notifyMissingExternalData(missingByYm) {
+    const messages = [];
+    const ymsOf = (key, reason) => Object.keys(missingByYm).filter(ym => missingByYm[ym][key] === reason);
+
+    // 月報PET: 対象年度のシートが無い (年度ごとにまとめる)
+    const noSheetByFy = {};
+    ymsOf('production', 'noSheet').forEach(ym => {
+      const fy = AppConfig.getFiscalYear(parseInt(ym.slice(0, 4), 10), parseInt(ym.slice(4, 6), 10));
+      (noSheetByFy[fy] = noSheetByFy[fy] || []).push(ym);
+    });
+    Object.keys(noSheetByFy).sort().forEach(fy => {
+      const yms = noSheetByFy[fy];
+      messages.push(`月報PETに ${fy}年度 のシートが無いため、${yms.length}ヶ月分（${formatYmList(yms)}）の本数を取得できませんでした。本数 0 として集計しています`);
+    });
+
+    // 月報PET: シートはあるが対象月が未入力
+    const noDataYms = ymsOf('production', 'noData');
+    if (noDataYms.length > 0) {
+      messages.push(`月報PETに本数が入力されていないため、${noDataYms.length}ヶ月分（${formatYmList(noDataYms)}）の本数を取得できませんでした。本数 0 として集計しています`);
+    }
+
+    // エネルギー計算表: 単価を取得できない (シートなし・未入力をまとめる)
+    const noPriceYms = Object.keys(missingByYm).filter(ym => missingByYm[ym].electricity);
+    if (noPriceYms.length > 0) {
+      const defaultPrice = state.externalData.electricity.unitPriceYenPerKwh;
+      messages.push(`エネルギー計算表から電力量単価を取得できなかったため、${noPriceYms.length}ヶ月分（${formatYmList(noPriceYms)}）は既定の単価（${defaultPrice} 円/kWh）で計算しています`);
+    }
+
+    messages.forEach(msg => showToast(msg, 'warning', 12000));
   }
 
   /**
    * 読み込み済みの全年月データセットに対して、外部Excelデータ（生産本数・単価）を再抽出し、KPIを再計算する
+   * @returns {Object} 取得できなかった月の情報 { [ym]: { production, electricity } }
    */
   function recalculateAllLoadedMonths() {
+    const missingByYm = {};
     const yms = Object.keys(state.monthlyDatasets);
-    if (yms.length === 0) return;
+    if (yms.length === 0) return missingByYm;
 
     yms.forEach(ym => {
       const ds = state.monthlyDatasets[ym];
       if (!ds) return;
 
-      const { production, electricity } = extractExternalDataForMonth(ym);
+      const { production, electricity, missing } = extractExternalDataForMonth(ym, ds.externalData);
+      missingByYm[ym] = missing;
 
       const kpiResult = KpiService.calculateKpi(
         ds.catResult.categoryMonthlyTotals,
@@ -1495,6 +1590,11 @@
         production,
         electricity
       );
+
+      // 保存される値（本数・単価）が変わった月は、スプレッドシートへ未反映の状態に戻す
+      if (externalDataSignature(ds.externalData) !== externalDataSignature({ production, electricity })) {
+        state.syncedYms.delete(ym);
+      }
 
       ds.kpiResult = kpiResult;
       ds.externalData = { production, electricity };
@@ -1508,6 +1608,7 @@
     // 年間データセットの再集約とプルダウン更新
     rebuildAnnualDataFromMonthlyDatasets();
     updateSyncStatusUI();
+    return missingByYm;
   }
 
   /**
@@ -1562,6 +1663,7 @@
       }
 
       yms.sort();
+      const missingByYm = {};
 
       // 各年月のデータを個別に集約・保持
       yms.forEach((ym, idx) => {
@@ -1570,8 +1672,10 @@
         const aggResult = HourlyAggregator.aggregateHourly(mergedRecords, ym);
         const catResult = CategoryService.aggregateCategories(aggResult.rows, aggResult.monthlyColumnSums);
 
-        // 対象年月に応じた外部Excelデータを抽出
-        const { production, electricity } = extractExternalDataForMonth(ym);
+        // 対象年月に応じた外部Excelデータを抽出 (Excelが未読込の種類は、その月の既存の値を引き継ぐ)
+        const previousDataset = state.monthlyDatasets[ym];
+        const { production, electricity, missing } = extractExternalDataForMonth(ym, previousDataset && previousDataset.externalData);
+        missingByYm[ym] = missing;
 
         const kpiResult = KpiService.calculateKpi(
           catResult.categoryMonthlyTotals,
@@ -1587,6 +1691,8 @@
           kpiResult,
           externalData: { production, electricity }
         };
+        // ファイルから集計し直した月は、スプレッドシートへ未反映の状態に戻す
+        state.syncedYms.delete(ym);
         showProgress(70 + Math.floor(((idx + 1) / yms.length) * 25));
       });
 
@@ -1603,6 +1709,7 @@
 
       showProgress(100);
       showToast(`${yms.length}ヶ月分のデータを集約しました（最新: ${latestYm}を表示中）`, 'success');
+      notifyMissingExternalData(missingByYm);
       setTimeout(hideProgress, 800);
     } catch (err) {
       console.error(err);
@@ -1971,13 +2078,13 @@
     if (el) el.textContent = text;
   }
 
-  function showToast(msg, type = 'success') {
+  function showToast(msg, type = 'success', durationMs = 4000) {
     if (!toastContainer) return;
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.innerHTML = `<span>${type === 'success' ? '✓' : (type === 'error' ? '⚠' : 'ℹ')}</span> <div>${msg}</div>`;
+    toast.innerHTML = `<span>${type === 'success' ? '✓' : ((type === 'error' || type === 'warning') ? '⚠' : 'ℹ')}</span> <div>${msg}</div>`;
     toastContainer.appendChild(toast);
-    setTimeout(() => toast.remove(), 4000);
+    setTimeout(() => toast.remove(), durationMs);
   }
 
   // グローバル公開
