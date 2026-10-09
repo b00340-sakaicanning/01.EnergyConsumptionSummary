@@ -86,6 +86,32 @@
     { key: 'costPerMinute', name: '単位時間コスト', unit: '円/分', digits: 2, isRate: true }
   ];
 
+  // トータルエネルギーのエネルギー源マスター (熱量・CO2 の内訳の並びと色)
+  const TOTAL_ENERGY_SOURCES = [
+    { key: 'heavyOil', name: 'A重油', gjKey: 'heavyOilGj', co2Key: 'heavyOilCo2', color: '#ea580c' },
+    { key: 'lng', name: 'LNG', gjKey: 'lngGj', co2Key: 'lngCo2', color: '#0891b2' },
+    { key: 'electricity', name: '電気', gjKey: 'electricityGj', co2Key: 'electricityCo2', color: '#ca8a04' }
+  ];
+
+  // スプレッドシート「トータルエネルギー集約」の列 (対象年月に続く列。key は月次データの項目名)
+  const TOTAL_ENERGY_SHEET_COLUMNS = [
+    { key: 'productionCases', header: '生産数量(ケース)' },
+    { key: 'litersPerCase', header: '1ケースあたりの容量(L)' },
+    { key: 'heavyOilGj', header: 'A重油 熱量(GJ)' },
+    { key: 'lngGj', header: 'LNG 熱量(GJ)' },
+    { key: 'electricityGj', header: '電気 熱量(GJ)' },
+    { key: 'totalGj', header: '合計 熱量(GJ)' },
+    { key: 'crudeOilKl', header: '原油換算量(kl)' },
+    { key: 'heavyOilCo2', header: 'A重油 CO2(t-CO2)' },
+    { key: 'lngCo2', header: 'LNG CO2(t-CO2)' },
+    { key: 'electricityCo2', header: '電気 CO2(t-CO2)' },
+    { key: 'totalCo2', header: '合計 CO2(t-CO2)' },
+    { key: 'solarKwhThousand', header: '太陽光 発電量(千kWh)' },
+    { key: 'solarGj', header: '太陽光 熱量(GJ)' },
+    { key: 'solarCo2', header: '太陽光 CO2(t-CO2)' },
+    { key: 'noSolarCrudeOilKl', header: '原油換算量 太陽光無し想定(kl)' }
+  ];
+
   // 原単位・平均系の指標 (単位本、単位時間)。総量系と違い、積み上げ・累計の対象にならない
   const RATE_METRIC_KEYS = ['kwhPerBottle', 'costPerBottle', 'kwhPerMinute', 'costPerMinute'];
 
@@ -329,6 +355,27 @@
     }
   };
 
+  /**
+   * 年度の一覧を、連続する年度をまとめた文字列にする (例: [2013, 2014, 2015, 2018] → '2013〜2015、2018')
+   */
+  function formatFiscalYearRanges(years) {
+    const sorted = Array.from(new Set((years || []).map(Number))).sort((a, b) => a - b);
+    const parts = [];
+    let start = null;
+    let prev = null;
+    sorted.forEach(y => {
+      if (start === null) {
+        start = y;
+      } else if (y !== prev + 1) {
+        parts.push(start === prev ? String(start) : `${start}〜${prev}`);
+        start = y;
+      }
+      prev = y;
+    });
+    if (start !== null) parts.push(start === prev ? String(start) : `${start}〜${prev}`);
+    return parts.join('、');
+  }
+
   return {
     VARIETY_MASTER,
     VARIETY_GROUPS,
@@ -336,10 +383,13 @@
     VARIETY_MAPPING,
     EVALUATION_METRICS,
     FUEL_METRICS,
+    TOTAL_ENERGY_SOURCES,
+    TOTAL_ENERGY_SHEET_COLUMNS,
     RATE_METRIC_KEYS,
     FISCAL_MONTH_ORDER,
     FISCAL_MONTH_LABELS,
     getFiscalYear,
+    formatFiscalYearRanges,
     STEP_MASTER,
     CATEGORIES,
     CATEGORY_COLUMN_MAP,

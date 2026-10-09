@@ -45,10 +45,11 @@
       </div>
     </header>
 
-    <!-- アプリ切り替え (電力 / 燃料エネルギー) -->
+    <!-- アプリ切り替え (電力 / 燃料エネルギー / トータルエネルギー) -->
     <div class="app-switcher" id="appSwitcher">
       <button class="app-switch-btn active" data-app="power">⚡ 電力</button>
       <button class="app-switch-btn" data-app="fuel">🔥 燃料エネルギー</button>
+      <button class="app-switch-btn" data-app="total">🌐 トータルエネルギー</button>
     </div>
 
     <!-- メインナビゲーションタブ (電力) -->
@@ -438,7 +439,7 @@
       <div id="fuelDropzone" class="dropzone-card">
         <div class="dropzone-icon">📁</div>
         <div class="dropzone-text">エネルギー計算表・月報PET (Excel) をドラッグ＆ドロップ</div>
-        <div class="dropzone-subtext">電力の画面と同じファイルを使います。どちらの画面から投入しても、両方に反映されます</div>
+        <div class="dropzone-subtext">他の画面と同じファイルを使います。どの画面から投入しても、すべての画面に反映されます</div>
         <input type="file" id="fuelFileInput" class="hidden-file-input" multiple accept=".xlsx,.xls">
 
         <!-- 読込状況バッジ -->
@@ -578,6 +579,180 @@
                 </td>
               </tr>
             </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- =========================================================================
+         トータルエネルギー: 生産量・エネルギー使用量・熱量・原単位・CO2排出量 (エネルギー計算表の年度シート 準拠)
+         ========================================================================= -->
+    <section id="totalEnergyView" class="view-section" style="display: none;">
+
+      <!-- Excelドラッグ＆ドロップゾーン (他の画面と同じファイルを共用) -->
+      <div id="totalDropzone" class="dropzone-card">
+        <div class="dropzone-icon">📁</div>
+        <div class="dropzone-text">エネルギー計算表・月報PET (Excel) をドラッグ＆ドロップ</div>
+        <div class="dropzone-subtext">他の画面と同じファイルを使います。どの画面から投入しても、すべての画面に反映されます。月報PETは、表示する年度を決めるために使います</div>
+        <input type="file" id="totalFileInput" class="hidden-file-input" multiple accept=".xlsx,.xls">
+
+        <!-- 読込状況バッジ -->
+        <div class="file-badges-container">
+          <span id="totalTagEnergy" class="tag-badge excel">かつらぎ計算表 (生産量・熱量・CO2)</span>
+          <span id="totalTagPet" class="tag-badge excel">月報PET (表示する年度)</span>
+        </div>
+      </div>
+
+      <!-- コントロールツールバー -->
+      <div class="toolbar-card">
+        <div class="toolbar-group">
+          <span class="toolbar-label">対象年度:</span>
+          <select id="totalYearSelector" class="select-control">
+            <option value="">（データ未読込）</option>
+          </select>
+        </div>
+
+        <div class="toolbar-group">
+          <span class="toolbar-label">表示:</span>
+          <div class="pill-group" id="totalModePills">
+            <button class="pill-btn active" data-mode="monthly">月別</button>
+            <button class="pill-btn" data-mode="yearly">年度推移</button>
+          </div>
+        </div>
+
+        <div class="toolbar-group" style="margin-left: auto;">
+          <span id="totalDataStatus" style="font-size: 0.85rem; color: var(--text-muted);"></span>
+        </div>
+      </div>
+
+      <!-- 年間KPIサマリーカード (対象年度) -->
+      <div class="kpi-grid">
+        <div class="kpi-card" style="--card-color: var(--primary);">
+          <div class="kpi-label">年間生産量</div>
+          <div class="kpi-value"><span id="totalKpiProduction">---</span><span class="kpi-unit">千ケース</span></div>
+          <div class="kpi-sub">前年度比 <span id="totalKpiProductionRatio">---</span></div>
+        </div>
+        <div class="kpi-card" style="--card-color: #dc2626;">
+          <div class="kpi-label">エネルギー使用量</div>
+          <div class="kpi-value"><span id="totalKpiCrudeOil">---</span><span class="kpi-unit">原油換算 kl</span></div>
+          <div class="kpi-sub">熱量 <span id="totalKpiTotalGj">---</span> GJ ／ 前年度比 <span id="totalKpiCrudeOilRatio">---</span></div>
+        </div>
+        <div class="kpi-card" style="--card-color: #8b5cf6;">
+          <div class="kpi-label">原単位</div>
+          <div class="kpi-value"><span id="totalKpiIntensity">---</span><span class="kpi-unit">kl/千ケース</span></div>
+          <div class="kpi-sub">前年度比 <span id="totalKpiIntensityRatio">---</span></div>
+        </div>
+        <div class="kpi-card" style="--card-color: #475569;">
+          <div class="kpi-label">CO2排出量</div>
+          <div class="kpi-value"><span id="totalKpiCo2">---</span><span class="kpi-unit">t-CO2</span></div>
+          <div class="kpi-sub">生産液量1klあたり <span id="totalKpiCo2PerKl">---</span> kg-CO2/kl ／ 前年度比 <span id="totalKpiCo2PerKlRatio">---</span></div>
+        </div>
+      </div>
+
+      <!-- 表示できない場合の案内 -->
+      <div id="totalNote" class="fuel-note" style="display: none;"></div>
+
+      <!-- グラフ (2×2) -->
+      <div class="chart-grid chart-grid-equal">
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">📈 生産量＆エネルギー使用量推移</h2>
+            <span class="toolbar-label" style="text-transform: none;">千ケース ／ 原油換算 kl</span>
+          </div>
+          <div class="chart-container">
+            <canvas id="totalProductionChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">📊 熱量推移</h2>
+            <span class="toolbar-label" style="text-transform: none;">A重油・LNG・電気 (GJ)</span>
+          </div>
+          <div class="chart-container">
+            <canvas id="totalHeatChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">📈 原単位推移</h2>
+            <span class="toolbar-label" style="text-transform: none;">原油換算 kl ÷ 千ケース</span>
+          </div>
+          <div class="chart-container">
+            <canvas id="totalIntensityChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <h2 class="chart-title">📊 CO2排出量推移</h2>
+            <span class="toolbar-label" style="text-transform: none;">排出量 (t-CO2) ／ 生産液量1klあたり (kg-CO2/kl)</span>
+          </div>
+          <div class="chart-container">
+            <canvas id="totalCo2Chart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- 集計テーブル -->
+      <div class="table-card">
+        <div class="table-header-bar">
+          <h3 class="table-title">📋 <span id="totalTableTitle">月別実績集計表</span></h3>
+          <span class="toolbar-label">かつらぎ工場エネルギー計算表 準拠</span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th id="totalThLabel">年月</th>
+                <th>生産数量<br>(千ケース)</th>
+                <th>A重油<br>(GJ)</th>
+                <th>LNG<br>(GJ)</th>
+                <th>電気<br>(GJ)</th>
+                <th>熱量 計<br>(GJ)</th>
+                <th>原油換算<br>(kl)</th>
+                <th>原単位<br>(kl/千ケース)</th>
+                <th id="totalThExtra">原単位 累計</th>
+                <th>CO2排出量<br>(t-CO2)</th>
+                <th>1klあたり<br>(kg-CO2/kl)</th>
+                <th>千ケースあたり<br>(t-CO2)</th>
+              </tr>
+            </thead>
+            <tbody id="totalTableBody">
+              <tr>
+                <td colspan="12" style="text-align:center; padding: 2rem; color: var(--text-muted);">
+                  エネルギー計算表と月報PETを読み込むと、集計表が表示されます
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 参考: 太陽光発電 無しの想定値 (太陽光のデータがある年度のみ表示) -->
+      <div class="table-card" id="totalSolarCard" style="display: none;">
+        <div class="table-header-bar">
+          <h3 class="table-title">📋 参考: 太陽光発電 無しの想定値</h3>
+          <span class="toolbar-label" style="text-transform: none;">太陽光発電の熱量・CO2 を合計に足し戻した場合の値</span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th id="totalSolarThLabel">年月</th>
+                <th>太陽光 発電量<br>(千kWh)</th>
+                <th>太陽光 熱量<br>(GJ)</th>
+                <th>熱量 計 無し想定<br>(GJ)</th>
+                <th>原油換算 無し想定<br>(kl)</th>
+                <th>原単位 無し想定<br>(kl/千ケース)</th>
+                <th>原単位 実績<br>(kl/千ケース)</th>
+                <th>CO2排出量 無し想定<br>(t-CO2)</th>
+                <th>1klあたり 無し想定<br>(kg-CO2/kl)</th>
+              </tr>
+            </thead>
+            <tbody id="totalSolarTableBody"></tbody>
           </table>
         </div>
       </div>
@@ -749,8 +924,10 @@
         'js/services/kpiService.js',
         'js/services/annualService.js',
         'js/services/fuelService.js',
+        'js/services/totalEnergyService.js',
         'js/components/charts.js',
         'js/fuelView.js',
+        'js/totalEnergyView.js',
         'js/app.js'
       ];
       function loadNextScript(index) {

@@ -3,6 +3,7 @@
  * エネルギー使用量集計システム GASバックエンド (doGet / スプレッドシートへの保存・復元・エクスポート用データ取得)
  * 電力: saveAggregatedData / loadSavedSummaryFromSpreadsheet
  * 燃料エネルギー: saveFuelMonthlyData / loadSavedFuelData
+ * トータルエネルギー: saveTotalEnergyMonthlyData / loadSavedTotalEnergyData
  * 共通: getSheetsDataForExport
  */
 
@@ -331,7 +332,69 @@ function setupSheets(ss) {
   // 5. 燃料集約 (A重油・LNG の熱量と購入費用、品種別本数)
   setupFuelSheet(ss);
 
+  // 6. トータルエネルギー集約 (生産数量・熱量・原油換算量・CO2)
+  setupTotalEnergySheet(ss);
+
   return { initialized: true };
+}
+
+// =========================================================================
+// 月1行のシート (燃料集約・トータルエネルギー集約) の共通処理
+// =========================================================================
+
+/**
+ * 月1行のシートへ、複数月の行をまとめて書き込む (A列の対象年月が一致する行は上書き、無ければ末尾へ追記)
+ * @param {Sheet} sheet 書き込み先シート (1行目はヘッダー、A列が対象年月)
+ * @param {number} colCount シートの列数
+ * @param {Array<Array>} newRows 書き込む行 (先頭の要素が 'YYYYMM')。対象年月が6桁の数字でない行は無視する
+ * @returns {Object} { updatedCount, appendedCount }
+ */
+function upsertMonthlyRows(sheet, colCount, newRows) {
+  // 既存の行を読み込み、対象年月 → 行位置 の対応を作る
+  var lastRow = sheet.getLastRow();
+  var sheetRows = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, colCount).getValues() : [];
+  var rowIndexByYm = {};
+  for (var r = 0; r < sheetRows.length; r++) {
+    var key = String(sheetRows[r][0] || '').trim();
+    if (key && rowIndexByYm[key] === undefined) rowIndexByYm[key] = r;
+  }
+
+  var updatedCount = 0;
+  var appendedCount = 0;
+  for (var i = 0; i < newRows.length; i++) {
+    var ym = String(newRows[i][0] || '').trim();
+    if (!/^\d{6}$/.test(ym)) continue;
+
+    if (rowIndexByYm[ym] !== undefined) {
+      sheetRows[rowIndexByYm[ym]] = newRows[i];
+      updatedCount++;
+    } else {
+      rowIndexByYm[ym] = sheetRows.length;
+      sheetRows.push(newRows[i]);
+      appendedCount++;
+    }
+  }
+
+  if (updatedCount + appendedCount > 0) {
+    sheet.getRange(2, 1, sheetRows.length, colCount).setValues(sheetRows);
+  }
+  return { updatedCount: updatedCount, appendedCount: appendedCount };
+}
+
+/**
+ * 数値ならそのまま、それ以外は空欄 ('') にする (シートへ書き込む値用)
+ */
+function numberOrBlank(v) {
+  return (typeof v === 'number' && isFinite(v)) ? v : '';
+}
+
+/**
+ * セルの値を数値にする。空欄や数値でない値は null (シートから読んだ値用)
+ */
+function numberOrNull(v) {
+  if (v === '' || v === null || v === undefined) return null;
+  var n = (typeof v === 'number') ? v : parseFloat(v);
+  return isFinite(n) ? n : null;
 }
 
 // =========================================================================
@@ -383,44 +446,20 @@ function saveFuelMonthlyData(rows) {
     if (!ss) return { success: false, error: 'スプレッドシートが見つかりません。Config.gs の SPREADSHEET_ID を確認してください。' };
 
     var sheet = setupFuelSheet(ss);
-    var colCount = getFuelSheetHeader().length;
     var vKeys = CONFIG.VARIETY_KEYS;
-    var numOrBlank = function (v) { return (typeof v === 'number' && isFinite(v)) ? v : ''; };
 
-    // 既存の行を読み込み、対象年月 → 行位置 の対応を作る
-    var lastRow = sheet.getLastRow();
-    var sheetRows = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, colCount).getValues() : [];
-    var rowIndexByYm = {};
-    for (var r = 0; r < sheetRows.length; r++) {
-      var key = String(sheetRows[r][0] || '').trim();
-      if (key && rowIndexByYm[key] === undefined) rowIndexByYm[key] = r;
-    }
-
-    var updatedCount = 0;
-    var appendedCount = 0;
+    var newRows = [];
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i] || {};
-      var ym = String(row.yearMonth || '').trim();
-      if (!/^\d{6}$/.test(ym)) continue;
-
-      var newRow = [ym, numOrBlank(row.heavyOilGj), numOrBlank(row.lngGj), numOrBlank(row.heavyOilCostThousandYen), numOrBlank(row.lngCostThousandYen)];
+      var newRow = [String(row.yearMonth || '').trim(), numberOrBlank(row.heavyOilGj), numberOrBlank(row.lngGj), numberOrBlank(row.heavyOilCostThousandYen), numberOrBlank(row.lngCostThousandYen)];
       for (var v = 0; v < vKeys.length; v++) {
         newRow.push(row.bottles ? (Number(row.bottles[vKeys[v]]) || 0) : '');
       }
-
-      if (rowIndexByYm[ym] !== undefined) {
-        sheetRows[rowIndexByYm[ym]] = newRow;
-        updatedCount++;
-      } else {
-        rowIndexByYm[ym] = sheetRows.length;
-        sheetRows.push(newRow);
-        appendedCount++;
-      }
+      newRows.push(newRow);
     }
-
-    if (updatedCount + appendedCount > 0) {
-      sheet.getRange(2, 1, sheetRows.length, colCount).setValues(sheetRows);
-    }
+    var result = upsertMonthlyRows(sheet, getFuelSheetHeader().length, newRows);
+    var updatedCount = result.updatedCount;
+    var appendedCount = result.appendedCount;
 
     return { success: true, savedCount: updatedCount + appendedCount, updatedCount: updatedCount, appendedCount: appendedCount };
   } catch (err) {
@@ -446,11 +485,7 @@ function loadSavedFuelData() {
     var vKeys = CONFIG.VARIETY_KEYS;
     var colCount = Math.min(getFuelSheetHeader().length, sheet.getLastColumn());
     var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, colCount).getValues();
-    var numOrNull = function (v) {
-      if (v === '' || v === null || v === undefined) return null;
-      var n = (typeof v === 'number') ? v : parseFloat(v);
-      return isFinite(n) ? n : null;
-    };
+    var numOrNull = numberOrNull;
 
     for (var r = 0; r < values.length; r++) {
       var ym = String(values[r][0] || '').trim();
@@ -706,9 +741,111 @@ function loadSavedSummaryFromSpreadsheet() {
   }
 }
 
+// =========================================================================
+// トータルエネルギー (トータルエネルギー集約シート)
+// =========================================================================
+
 /**
- * Excelエクスポート用に「日別集約」「KPI評価」「品種別集約」「燃料集約」シートの全生データを取得
- * @returns {Object} { success: true, sheets: { '日別集約': [...], 'KPI評価': [...], '品種別集約': [...], '燃料集約': [...] } }
+ * トータルエネルギー集約シートの名前
+ */
+function getTotalEnergySheetName() {
+  return (CONFIG.SHEET_NAMES && CONFIG.SHEET_NAMES.TOTAL_ENERGY) || 'トータルエネルギー集約';
+}
+
+/**
+ * トータルエネルギー集約シートのヘッダー (対象年月 + CONFIG.TOTAL_ENERGY_SHEET_COLUMNS の列)
+ */
+function getTotalEnergySheetHeader() {
+  var columns = CONFIG.TOTAL_ENERGY_SHEET_COLUMNS || [];
+  var header = ['対象年月'];
+  for (var i = 0; i < columns.length; i++) header.push(columns[i].header);
+  return header;
+}
+
+/**
+ * トータルエネルギー集約シートを取得する (無ければ作成する)
+ */
+function setupTotalEnergySheet(ss) {
+  var sheet = ss.getSheetByName(getTotalEnergySheetName());
+  if (!sheet) {
+    var header = getTotalEnergySheetHeader();
+    sheet = ss.insertSheet(getTotalEnergySheetName());
+    sheet.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold').setBackground('#e0f2f1');
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+/**
+ * トータルエネルギーの月次データをスプレッドシートへ書き込む (複数月をまとめて処理。対象年月が一致する行は上書き、無ければ末尾へ追記)
+ * @param {Array<Object>} rows [{ yearMonth, productionCases, litersPerCase, heavyOilGj, ... }]
+ *   項目は CONFIG.TOTAL_ENERGY_SHEET_COLUMNS の key。値が無い項目 (null) は空欄として書き込む
+ * @returns {Object} { success, savedCount, updatedCount, appendedCount }
+ */
+function saveTotalEnergyMonthlyData(rows) {
+  try {
+    if (!rows || !rows.length) return { success: false, error: '保存するトータルエネルギーのデータがありません' };
+
+    var columns = CONFIG.TOTAL_ENERGY_SHEET_COLUMNS || [];
+    if (columns.length === 0) return { success: false, error: 'Config.gs に TOTAL_ENERGY_SHEET_COLUMNS がありません。Config.gs を更新してください。' };
+
+    var ss = getSpreadsheet();
+    if (!ss) return { success: false, error: 'スプレッドシートが見つかりません。Config.gs の SPREADSHEET_ID を確認してください。' };
+
+    var sheet = setupTotalEnergySheet(ss);
+    var newRows = [];
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i] || {};
+      var newRow = [String(row.yearMonth || '').trim()];
+      for (var c = 0; c < columns.length; c++) newRow.push(numberOrBlank(row[columns[c].key]));
+      newRows.push(newRow);
+    }
+    var result = upsertMonthlyRows(sheet, columns.length + 1, newRows);
+
+    return { success: true, savedCount: result.updatedCount + result.appendedCount, updatedCount: result.updatedCount, appendedCount: result.appendedCount };
+  } catch (err) {
+    Logger.log('saveTotalEnergyMonthlyData error: ' + err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * 起動時の復元用に、トータルエネルギー集約シートの保存済みデータを取得する
+ * @returns {Object} { success, months: { [ym]: { productionCases, litersPerCase, heavyOilGj, ... } } }
+ *   項目は CONFIG.TOTAL_ENERGY_SHEET_COLUMNS の key。空欄のセルは null
+ */
+function loadSavedTotalEnergyData() {
+  try {
+    var ss = getSpreadsheet();
+    if (!ss) return { success: false, error: 'スプレッドシートが見つかりません' };
+
+    var months = {};
+    var sheet = ss.getSheetByName(getTotalEnergySheetName());
+    if (!sheet || sheet.getLastRow() < 2) return { success: true, months: months };
+
+    var columns = CONFIG.TOTAL_ENERGY_SHEET_COLUMNS || [];
+    var colCount = Math.min(columns.length + 1, sheet.getLastColumn());
+    var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, colCount).getValues();
+
+    for (var r = 0; r < values.length; r++) {
+      var ym = String(values[r][0] || '').trim();
+      if (!/^\d{6}$/.test(ym)) continue;
+
+      var month = {};
+      for (var c = 0; c < columns.length; c++) month[columns[c].key] = numberOrNull(values[r][c + 1]);
+      months[ym] = month;
+    }
+
+    return { success: true, months: months };
+  } catch (err) {
+    Logger.log('loadSavedTotalEnergyData error: ' + err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Excelエクスポート用に「日別集約」「KPI評価」「品種別集約」「燃料集約」「トータルエネルギー集約」シートの全生データを取得
+ * @returns {Object} { success: true, sheets: { '日別集約': [...], 'KPI評価': [...], '品種別集約': [...], '燃料集約': [...], 'トータルエネルギー集約': [...] } }
  */
 function getSheetsDataForExport() {
   try {
@@ -719,7 +856,8 @@ function getSheetsDataForExport() {
       CONFIG.SHEET_NAMES.DAILY,   // '日別集約'
       CONFIG.SHEET_NAMES.KPI,     // 'KPI評価'
       CONFIG.SHEET_NAMES.VARIETY, // '品種別集約'
-      getFuelSheetName()          // '燃料集約'
+      getFuelSheetName(),         // '燃料集約'
+      getTotalEnergySheetName()   // 'トータルエネルギー集約'
     ];
 
     var resultSheets = {};

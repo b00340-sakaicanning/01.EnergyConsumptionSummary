@@ -2,6 +2,7 @@
  * gas_app/js/fuelView.js
  * 燃料エネルギー画面 (年間推移・品種別分析) の制御
  * 読み込み済みのExcel (エネルギー計算表・月報PET) と、電力側の操業時間から燃料の集計を作り、画面に表示する。
+ * 表示・保存の対象は、月報PETに年度のシートがある年度 (月報PETが未読込のときは、品種別本数が保存されている年度) だけ。
  * 画面共通の部品 (通知、数値の整形、集計表の描画など) は app.js から init() で受け取る
  * ブラウザ環境およびNode.js環境両対応 (Node.jsでは、DOMを使わないデータ処理の関数だけをテストから利用する)
  */
@@ -23,38 +24,7 @@
 
   const fiscalYearOf = ym => AppConfig.getFiscalYear(parseInt(ym.slice(0, 4), 10), parseInt(ym.slice(4, 6), 10));
 
-  /**
-   * シート名に含まれる年度の候補 (4桁の数字) を取り出す
-   */
-  function listFiscalYears(sheetNames) {
-    const years = new Set();
-    (sheetNames || []).forEach(name => {
-      const m = String(name).match(/(?:^|\D)((?:19|20)\d{2})(?:\D|$)/);
-      if (m) years.add(parseInt(m[1], 10));
-    });
-    return Array.from(years).sort();
-  }
-
-  /**
-   * 年度の一覧を、連続する年度をまとめた文字列にする (例: [2013, 2014, 2015, 2018] → '2013〜2015、2018')
-   */
-  function formatYearRanges(years) {
-    const sorted = Array.from(new Set((years || []).map(Number))).sort((a, b) => a - b);
-    const parts = [];
-    let start = null;
-    let prev = null;
-    sorted.forEach(y => {
-      if (start === null) {
-        start = y;
-      } else if (y !== prev + 1) {
-        parts.push(start === prev ? String(start) : `${start}〜${prev}`);
-        start = y;
-      }
-      prev = y;
-    });
-    if (start !== null) parts.push(start === prev ? String(start) : `${start}〜${prev}`);
-    return parts.join('、');
-  }
+  const formatYearRanges = AppConfig.formatFiscalYearRanges;
 
   /**
    * 品種別本数を、8品種すべてのキーを持つ形に揃える
@@ -66,17 +36,46 @@
   }
 
   /**
-   * 読み込み済みのワークブックから、燃料の月次データを作り直す
-   * - エネルギー計算表が読み込まれていれば、読めた年月の燃料4値を取り直す (読めなかった年月の既存値は残す)
-   * - 月報PETが読み込まれていれば、全年月の品種別本数を取り直す (対象年度のシートが無い、または未入力の月は null)
-   * - 読み込まれていない種類の値は、既存の値 (スプレッドシートから復元した値を含む) を引き継ぐ
+   * 月次データのうち、品種別本数が入っている年度を列挙する
+   * (月報PETを読み込んでいないときに、スプレッドシートから復元したデータから表示対象の年度を決めるために使う)
+   * @returns {number[]} 年度の昇順
+   */
+  function listYearsWithBottles(monthly) {
+    const years = new Set();
+    Object.keys(monthly || {}).forEach(ym => {
+      const m = monthly[ym];
+      if (m && m.bottles && FuelService.summarizeFuelMonth(m).hasData) years.add(fiscalYearOf(ym));
+    });
+    return Array.from(years).sort((a, b) => a - b);
+  }
+
+  /**
+   * 表示・保存の対象にする年度を決める
+   * - 月報PETが読み込まれている場合: 月報PETに年度のシートがある年度
+   * - 読み込まれていない場合: 月次データ (復元したデータ) のうち、品種別本数が入っている年度
+   * @param {number[]|null} petFiscalYears 読み込み済みの月報PETにシートがある年度。月報PETが未読込なら null
+   * @param {Object} monthly 月次データ
+   * @returns {number[]} 年度の昇順
+   */
+  function resolveTargetYears(petFiscalYears, monthly) {
+    if (petFiscalYears) return petFiscalYears.map(Number).sort((a, b) => a - b);
+    return listYearsWithBottles(monthly);
+  }
+
+  /**
+   * 読み込み済みのワークブックから、燃料の月次データを作り直す (対象年度のみ)
+   * - エネルギー計算表が読み込まれていれば、対象年度の燃料4値を取り直す (読めなかった年月の既存値は残す)
+   * - 月報PETが読み込まれていれば、対象年度の年月の品種別本数を取り直す (未入力の月は null)
+   * - 読み込まれていない種類の値と、対象年度以外の年月は、既存の値 (スプレッドシートから復元した値を含む) のまま残す
    * @param {Object} existing { [ym]: { heavyOilGj, lngGj, heavyOilCostThousandYen, lngCostThousandYen, bottles } }
    * @param {Array} energyWorkbooks エネルギー計算表のワークブック
    * @param {Array} petWorkbooks 月報PETのワークブック
-   * @returns {Object} { monthly, skippedYears, noPetYears }
-   *   skippedYears: シートはあるが燃料の行を特定できなかった年度 / noPetYears: 月報PETに年度のシートが無い年度
+   * @param {number[]} targetYears 対象年度 (resolveTargetYears の戻り値)
+   * @returns {Object} { monthly, skippedYears }
+   *   skippedYears: 対象年度のうち、シートはあるが燃料の行を特定できなかった年度
    */
-  function mergeFuelMonthly(existing, energyWorkbooks, petWorkbooks) {
+  function mergeFuelMonthly(existing, energyWorkbooks, petWorkbooks, targetYears) {
+    const targets = (targetYears || []).map(Number);
     const monthly = {};
     Object.keys(existing || {}).forEach(ym => {
       monthly[ym] = Object.assign({}, existing[ym], { bottles: existing[ym].bottles ? normalizeBottles(existing[ym].bottles) : null });
@@ -85,7 +84,7 @@
     const readYears = new Set();
     const unreadableYears = new Set();
     (energyWorkbooks || []).forEach(wb => {
-      listFiscalYears(wb.SheetNames).forEach(fy => {
+      targets.forEach(fy => {
         const res = ExcelReader.parseFuelEnergyTable(wb, fy);
         if (!res.sheetFound) return;
         if (!res.layoutFound) { unreadableYears.add(fy); return; }
@@ -98,25 +97,20 @@
       });
     });
 
-    const noPetYears = new Set();
     if (petWorkbooks && petWorkbooks.length > 0) {
-      Object.keys(monthly).forEach(ym => {
+      Object.keys(monthly).filter(ym => targets.includes(fiscalYearOf(ym))).forEach(ym => {
         let bottles = null;
-        let sheetFound = false;
         petWorkbooks.forEach(wb => {
           const res = ExcelReader.parsePetMonthlyReport(wb, ym);
-          if (res.sheetFound) sheetFound = true;
           if (Object.keys(res.varieties).length > 0) bottles = res.varieties;
         });
         monthly[ym].bottles = bottles ? normalizeBottles(bottles) : null;
-        if (!sheetFound) noPetYears.add(fiscalYearOf(ym));
       });
     }
 
     return {
       monthly,
-      skippedYears: Array.from(unreadableYears).filter(fy => !readYears.has(fy)).sort(),
-      noPetYears: Array.from(noPetYears).sort()
+      skippedYears: Array.from(unreadableYears).filter(fy => !readYears.has(fy)).sort()
     };
   }
 
@@ -147,13 +141,19 @@
   }
 
   /**
-   * 月次データから、データのある年度ごとの年間データセットを作る
+   * 月次データから、対象年度のうちデータのある年度ごとの年間データセットを作る
+   * @param {Object} monthly 月次データ
+   * @param {Object} operationMinByYm 電力側の品種別操業時間
+   * @param {number[]} [targetYears] 対象年度。省略時は、データのあるすべての年度
    * @returns {Object} { [fiscalYear]: dataset }
    */
-  function buildAnnualDatasets(monthly, operationMinByYm) {
+  function buildAnnualDatasets(monthly, operationMinByYm, targetYears) {
+    const targets = targetYears ? targetYears.map(Number) : null;
     const years = new Set();
     Object.keys(monthly || {}).forEach(ym => {
-      if (FuelService.summarizeFuelMonth(monthly[ym]).hasData) years.add(fiscalYearOf(ym));
+      const fy = fiscalYearOf(ym);
+      if (targets && !targets.includes(fy)) return;
+      if (FuelService.summarizeFuelMonth(monthly[ym]).hasData) years.add(fy);
     });
     const datasets = {};
     Array.from(years).forEach(fy => {
@@ -218,17 +218,18 @@
 
   let deps = null;
   let els = {};
-  const workbookCache = new WeakMap(); // 読み込み済みExcelの解析結果 (ファイルごとに1回だけ解析する)
   const fuelState = {
-    monthly: {},          // { [ym]: { heavyOilGj, lngGj, heavyOilCostThousandYen, lngCostThousandYen, bottles } }
-    annualDatasets: {},   // { [fiscalYear]: dataset }
+    monthly: {},          // { [ym]: { heavyOilGj, lngGj, heavyOilCostThousandYen, lngCostThousandYen, bottles } } 対象年度以外の復元データも保持する
+    targetYears: [],      // 表示・保存の対象にする年度
+    annualDatasets: {},   // { [fiscalYear]: dataset } 対象年度のみ
     selectedYear: null,
     metricKey: AppConfig.FUEL_METRICS[0].key,
-    savedSignatures: {},  // スプレッドシートに保存済みの値の署名 { [ym]: string }
-    noPetYears: []
+    savedSignatures: {}   // スプレッドシートに保存済みの値の署名 { [ym]: string }
   };
 
-  const dataYms = () => Object.keys(fuelState.monthly).filter(ym => FuelService.summarizeFuelMonth(fuelState.monthly[ym]).hasData).sort();
+  // 表示・保存の対象になる年月 (対象年度で、燃料のデータがある月)
+  const dataYms = () => Object.keys(fuelState.monthly)
+    .filter(ym => fuelState.targetYears.includes(fiscalYearOf(ym)) && FuelService.summarizeFuelMonth(fuelState.monthly[ym]).hasData).sort();
   const pendingYms = () => dataYms().filter(ym => monthSignature(fuelState.monthly[ym]) !== fuelState.savedSignatures[ym]);
   const hasGasFunction = name => typeof google !== 'undefined' && google.script && google.script.run && typeof google.script.run[name] === 'function';
   const isGasEnvironment = () => typeof google !== 'undefined' && google.script && google.script.run;
@@ -293,55 +294,32 @@
   }
 
   /**
-   * 読み込み済みExcelを種別ごとのワークブックに分ける
-   */
-  function loadedWorkbooks() {
-    const result = { energy: [], pet: [] };
-    (deps.getLoadedExcelFiles() || []).forEach(ef => {
-      const kind = deps.detectExcelKind(ef.name);
-      if (kind !== 'energy' && kind !== 'pet') return;
-      try {
-        if (!workbookCache.has(ef)) workbookCache.set(ef, XLSX.read(ef.buffer, { type: 'array' }));
-        result[kind].push(workbookCache.get(ef));
-      } catch (err) {
-        console.warn('Excel parse error (fuel):', err);
-      }
-    });
-    return result;
-  }
-
-  /**
    * Excelが読み込まれたときに呼ばれる。燃料の月次データを作り直して表示する
    * @param {boolean} [notify=true] 読込結果を通知するか
    */
   function onExcelFilesChanged(notify) {
     if (!deps) return;
-    const wbs = loadedWorkbooks();
+    const wbs = deps.getLoadedWorkbooks();
     if (wbs.energy.length === 0 && wbs.pet.length === 0) return;
 
-    const before = dataYms().length;
-    const merged = mergeFuelMonthly(fuelState.monthly, wbs.energy, wbs.pet);
+    const targetYears = resolveTargetYears(deps.getPetFiscalYears(), fuelState.monthly);
+    const merged = mergeFuelMonthly(fuelState.monthly, wbs.energy, wbs.pet, targetYears);
     fuelState.monthly = merged.monthly;
-    fuelState.noPetYears = merged.noPetYears;
     rebuildAndRender();
 
     if (notify === false) return;
     const years = Object.keys(fuelState.annualDatasets).sort();
-    if (wbs.energy.length > 0) {
-      if (years.length > 0) {
-        const range = years.length > 1 ? `${years[0]}〜${years[years.length - 1]}年度` : `${years[0]}年度`;
-        deps.showToast(`燃料エネルギーのデータを読み込みました（${range}、計 ${dataYms().length} ヶ月）`, 'success');
-      } else {
-        deps.showToast('エネルギー計算表から燃料（A重油・LNG）のデータを読み取れませんでした', 'warning', 12000);
-      }
-      if (merged.skippedYears.length > 0) {
-        deps.showToast(`エネルギー計算表の ${formatYearRanges(merged.skippedYears)}年度 は、燃料の費用の行を特定できないため対象外にしました`, 'warning', 12000);
-      }
-    } else if (before === 0 && dataYms().length === 0) {
-      deps.showToast('燃料エネルギーの表示には、エネルギー計算表の読み込みが必要です', 'info');
+    if (years.length > 0) {
+      deps.showToast(`燃料エネルギーのデータを読み込みました（${formatYearRanges(years)}年度、計 ${dataYms().length} ヶ月）`, 'success');
+    } else if (wbs.pet.length === 0) {
+      deps.showToast('燃料エネルギーを表示するには、月報PETも投入してください（表示する年度は、月報PETにシートがある年度です）', 'info', 8000);
+    } else if (wbs.energy.length === 0) {
+      deps.showToast('燃料エネルギーの表示には、エネルギー計算表の読み込みが必要です', 'info', 8000);
+    } else {
+      deps.showToast('エネルギー計算表から、月報PETにシートがある年度の燃料（A重油・LNG）のデータを読み取れませんでした', 'warning', 12000);
     }
-    if (wbs.pet.length > 0 && merged.noPetYears.length > 0 && years.length > 0) {
-      deps.showToast(`月報PETにシートが無い年度（${formatYearRanges(merged.noPetYears)}年度）は、品種別の値と本数あたりの指標を表示できません`, 'warning', 12000);
+    if (merged.skippedYears.length > 0) {
+      deps.showToast(`エネルギー計算表の ${formatYearRanges(merged.skippedYears)}年度 は、燃料の費用の行を特定できないため表示できません`, 'warning', 12000);
     }
   }
 
@@ -354,7 +332,8 @@
   }
 
   function rebuildAndRender() {
-    fuelState.annualDatasets = buildAnnualDatasets(fuelState.monthly, deps.getOperationMinutesByYm());
+    fuelState.targetYears = resolveTargetYears(deps.getPetFiscalYears(), fuelState.monthly);
+    fuelState.annualDatasets = buildAnnualDatasets(fuelState.monthly, deps.getOperationMinutesByYm(), fuelState.targetYears);
     const years = Object.keys(fuelState.annualDatasets).sort().reverse();
     if (!fuelState.selectedYear || !fuelState.annualDatasets[fuelState.selectedYear]) {
       fuelState.selectedYear = years.length > 0 ? years[0] : null;
@@ -369,9 +348,10 @@
   function updateBadges() {
     const yms = dataYms();
     const ops = deps.getOperationMinutesByYm();
+    const wbs = deps.getLoadedWorkbooks();
     const toggle = (id, on) => { const el = document.getElementById(id); if (el) el.classList.toggle('detected', on); };
-    toggle('fuelTagEnergy', yms.length > 0);
-    toggle('fuelTagPet', yms.some(ym => !!fuelState.monthly[ym].bottles));
+    toggle('fuelTagEnergy', wbs.energy.length > 0 || yms.length > 0);
+    toggle('fuelTagPet', wbs.pet.length > 0 || yms.some(ym => !!fuelState.monthly[ym].bottles));
     toggle('fuelTagOperation', yms.some(ym => !!ops[ym]));
   }
 
@@ -390,8 +370,14 @@
 
     const ds = fuelState.selectedYear ? fuelState.annualDatasets[fuelState.selectedYear] : null;
     if (!ds) {
+      // エネルギー計算表だけが読み込まれている場合は、月報PETの投入を案内する
+      const wbs = deps.getLoadedWorkbooks();
+      const guide = (wbs.energy.length > 0 && wbs.pet.length === 0)
+        ? '月報PETを投入すると表示されます。表示する年度は、月報PETにシートがある年度です。'
+        : '';
       els.status.textContent = '';
-      els.note.style.display = 'none';
+      els.note.style.display = guide ? 'block' : 'none';
+      els.note.innerHTML = guide ? `<div>${guide}</div>` : '';
       return;
     }
 
@@ -622,8 +608,9 @@
     handleSync,
     buildExportRows,
     // テスト用 (DOMを使わないデータ処理)
-    listFiscalYears,
     formatYearRanges,
+    listYearsWithBottles,
+    resolveTargetYears,
     mergeFuelMonthly,
     monthSignature,
     buildAnnualDatasets,

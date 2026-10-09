@@ -19,6 +19,8 @@
   const annualStackedChartInstances = {};
   const annualTrendChartInstances = {};
   let annualEquipTrendChartInstance = null;
+  // 組み合わせグラフ (トータルエネルギーの画面) も canvas ごとにインスタンスを持つ
+  const comboChartInstances = {};
   let annualEquipDoughnutChartInstance = null;
 
   // 品種カラーパレット (Excel原紙・月別電力使用量集約グラフ表示(総電力 2024).xlsx 準拠)
@@ -728,9 +730,103 @@
     ));
   }
 
+  /**
+   * 積み上げ棒と折れ線を組み合わせた汎用グラフ (トータルエネルギーの画面で使用)
+   * @param {string} canvasId
+   * @param {Object} config {
+   *   labels: 横軸のラベル,
+   *   bars:  [{ label, data, color, unit, digits }]  積み上げ棒 (左軸)。省略可
+   *   lines: [{ label, data, color, unit, digits, axis }]  折れ線。axis は 'y' (左軸、既定) または 'y1' (右軸)
+   *   axes:  { y: { title, max, digits }, y1: { title, max, digits } }  y1 は右軸を使う場合のみ
+   * }
+   *   unit・digits はツールチップ、axes の digits は目盛りの小数桁。data の null はデータなし (折れ線は途切れる)
+   */
+  function renderComboChart(canvasId, config) {
+    if (typeof Chart === 'undefined') return;
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+    if (comboChartInstances[canvasId]) comboChartInstances[canvasId].destroy();
+
+    const bars = config.bars || [];
+    const lines = config.lines || [];
+    const axes = config.axes || {};
+    const formatValue = (v, digits) => Number(v).toLocaleString(undefined, { minimumFractionDigits: digits || 0, maximumFractionDigits: digits || 0 });
+
+    const datasets = [];
+    lines.forEach((line, idx) => {
+      datasets.push({
+        type: 'line',
+        label: line.label,
+        data: line.data,
+        borderColor: line.color,
+        backgroundColor: line.color,
+        borderWidth: 2.2,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        fill: false,
+        tension: 0,
+        yAxisID: line.axis || 'y',
+        stack: `comboLine${idx}`, // 折れ線どうしを積み上げない
+        order: 0,
+        valueUnit: line.unit || '',
+        valueDigits: line.digits || 0
+      });
+    });
+    bars.forEach(bar => {
+      datasets.push(Object.assign(buildStackedBar(bar.label, bar.data, bar.color, 'comboStack'), {
+        yAxisID: 'y',
+        valueUnit: bar.unit || '',
+        valueDigits: bar.digits || 0
+      }));
+    });
+
+    const buildAxis = (axisConfig, position, drawGrid) => {
+      const cfg = axisConfig || {};
+      return {
+        type: 'linear',
+        position: position,
+        beginAtZero: true,
+        max: cfg.max > 0 ? cfg.max : undefined,
+        grid: drawGrid ? { color: GRID_COLOR } : { drawOnChartArea: false },
+        title: { display: !!cfg.title, text: cfg.title || '', color: TEXT_COLOR, font: { size: 11 } },
+        ticks: {
+          color: TEXT_COLOR,
+          callback: v => Number(v).toLocaleString(undefined, { maximumFractionDigits: cfg.digits || 0 })
+        }
+      };
+    };
+    const scales = {
+      x: { stacked: bars.length > 0, grid: { display: false }, ticks: { color: TEXT_COLOR } },
+      y: Object.assign(buildAxis(axes.y, 'left', true), { stacked: bars.length > 0 })
+    };
+    if (axes.y1) scales.y1 = buildAxis(axes.y1, 'right', false);
+
+    comboChartInstances[canvasId] = new Chart(ctx, {
+      data: { labels: config.labels, datasets: datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'top', labels: { color: '#334155', font: { weight: '600', size: 11 } } },
+          tooltip: {
+            callbacks: {
+              label: function (c) {
+                if (c.raw === null || c.raw === undefined) return ` ${c.dataset.label}: ---`;
+                return ` ${c.dataset.label}: ${formatValue(c.raw, c.dataset.valueDigits)} ${c.dataset.valueUnit}`;
+              }
+            }
+          }
+        },
+        scales: scales
+      }
+    });
+  }
+
   return {
     renderDailyChart,
     renderCategoryDoughnutChart,
+    renderComboChart,
     renderAnnualStackedBarChart,
     renderAnnualTrendChart,
     renderAnnualEquipmentTrendChart,

@@ -45,11 +45,12 @@
 │   ├── verify_config_sync.js            # Config.gs と js/config.js の二重定義の一致検証
 │   ├── verify_excel_reader.js           # 月報PET・エネルギー計算表の解析の検証 (模擬シートを使用。燃料の行の読み取りを含む)
 │   ├── verify_fuel_service.js           # 燃料エネルギーの集計の検証 (参考Excelの値と突合)
-│   └── verify_fuel_view.js              # 燃料エネルギー画面のデータ処理の検証 (模擬シートを使用)
+│   ├── verify_fuel_view.js              # 燃料エネルギー画面のデータ処理の検証 (模擬シートを使用)
+│   └── verify_total_energy.js           # トータルエネルギーの読み取り・集計・画面のデータ処理の検証 (模擬シートを使用)
 ├── screenshot/                          # 画面確認時のスクリーンショット
 │   └── YYYYMMDDhhmm_変更内容/           # 作業ごとのフォルダ (history/ の履歴ファイルと同じ名前)
 ├── gas_app/                             # アプリケーション本体
-│   ├── Code.gs                          # GASバックエンド (doGet / 電力・燃料の保存と復元 / エクスポート用データ取得)
+│   ├── Code.gs                          # GASバックエンド (doGet / 電力・燃料・トータルエネルギーの保存と復元 / エクスポート用データ取得)
 │   ├── Config.gs                        # 設定値・マスター定義
 │   ├── build.js                         # 自己完結型 index.html 生成スクリプト
 │   ├── index.html                       # SPAフロントエンド本番成果物 (CSS/JSインライン統合)
@@ -57,18 +58,20 @@
 │   ├── css/
 │   │   └── style.css                    # スタイリング (ライトテーマ)
 │   ├── js/
-│   │   ├── app.js                       # アプリケーション起点・UI制御・電力/燃料エネルギーの切り替え
+│   │   ├── app.js                       # アプリケーション起点・UI制御・電力/燃料エネルギー/トータルエネルギーの切り替え
 │   │   ├── fuelView.js                  # 燃料エネルギー画面の制御 (月次データの作成・描画・保存・復元)
+│   │   ├── totalEnergyView.js           # トータルエネルギー画面の制御 (月次データの作成・描画・保存・復元)
 │   │   ├── config.js                    # 列定義・工程マッピング・共通定数 (品種キー、年度の月並び等)
 │   │   ├── etl/
 │   │   │   ├── csvParser.js             # CSVパース・電力列動的抽出・外れ値補正
 │   │   │   ├── hourlyAggregator.js      # 2段階欠損補正・1時間平均化
-│   │   │   └── excelReader.js           # 外部Excel解析 (月報PET / 計算表の電気料金、燃料の熱量・費用)
+│   │   │   └── excelReader.js           # 外部Excel解析 (月報PET / 計算表の電気料金、燃料の熱量・費用、トータルエネルギー)
 │   │   ├── services/
 │   │   │   ├── categoryService.js       # 工程別小計・集約
 │   │   │   ├── kpiService.js            # 原単位・コスト算出
 │   │   │   ├── annualService.js         # 品種別・設備別年間集約
-│   │   │   └── fuelService.js           # 燃料エネルギーの集計 (品種別按分・8評価項目・累計)
+│   │   │   ├── fuelService.js           # 燃料エネルギーの集計 (品種別按分・8評価項目・累計)
+│   │   │   └── totalEnergyService.js    # トータルエネルギーの集計 (原単位・CO2の比・累計・年間計・前年度比・年度推移)
 │   │   └── components/
 │   │       └── charts.js                # グラフ描画 (Chart.js)・目盛り上限の算出
 │   └── demo/                            # ローカル開発時 (localhost) のみ読み込むデモ用JSONデータ
@@ -78,7 +81,7 @@
 └── history/                             # 作業履歴 (YYYYMMDDhhmm_変更内容.md)
 ```
 
-アプリは、画面上部の切替ボタンで「電力」と「燃料エネルギー」を切り替える。燃料エネルギーは `fuelService.js`（計算）と `fuelView.js`（画面・保存）に分かれ、グラフ・集計表・Excel の読み込みは電力と共用する。スプレッドシートは5シート（電力の4シートと `燃料集約`）。
+アプリは、画面上部の切替ボタンで「電力」「燃料エネルギー」「トータルエネルギー」を切り替える。燃料エネルギーとトータルエネルギーは Excel だけで表示する画面で、それぞれ計算（`fuelService.js`、`totalEnergyService.js`）と画面・保存（`fuelView.js`、`totalEnergyView.js`）に分かれ、Excel の読み込みとグラフの共通部品は全画面で共用する。この2つの画面が表示するのは、月報PETに年度のシートがある年度だけ。スプレッドシートは6シート（電力の4シートと `燃料集約`・`トータルエネルギー集約`）。
 
 GASへデプロイするのは `Code.gs`、`Config.gs`、`index.html` の3ファイルのみ。`css/`、`js/`、`index.template.html` を変更したら `node gas_app/build.js` で `index.html` を再生成する。
 
@@ -103,10 +106,10 @@ GASへデプロイするのは `Code.gs`、`Config.gs`、`index.html` の3ファ
 - 履歴と完了報告: 修正・実装を実行した場合は、`history/` 配下に `YYYYMMDDhhmm_変更内容.md` を作成すること
 - 安全な削除: ファイル・フォルダの削除が必要な場合は即時削除せずゴミ箱へ移動させること
 - 再ビルド: `gas_app/css/`、`gas_app/js/`、`gas_app/index.template.html` を変更したら、`node gas_app/build.js` で `gas_app/index.html` を再生成し、ローカル（`cd gas_app && python3 -m http.server 8000` → `http://localhost:8000/index.html`）で画面を確認すること。`index.html` は生成物なので直接編集しない
-- 設定の二重定義: `gas_app/Config.gs` と `gas_app/js/config.js` には同じマスター定義（品種キー、品種合算マッピング、カテゴリ、設備90列、目盛り設定）がある。片方を変えたらもう一方も同じ内容に揃え、`node tests/verify_config_sync.js` で一致を確認すること
+- 設定の二重定義: `gas_app/Config.gs` と `gas_app/js/config.js` には同じマスター定義（品種キー、品種合算マッピング、カテゴリ、設備90列、目盛り設定、トータルエネルギー集約シートの列）がある。片方を変えたらもう一方も同じ内容に揃え、`node tests/verify_config_sync.js` で一致を確認すること
 - テスト: 集計ロジック（`js/etl/`、`js/services/`、`js/config.js`）や `Config.gs` を変更したら、次を実行すること
   - `node tests/test_etl_runner.js` → `python3 tests/verify_output.py tests/test_output_202503.json`（`reference/` の実データが必要）
-  - `node tests/verify_variety_fixes.js`、`node tests/verify_variety_and_restore.js`、`node tests/verify_config_sync.js`、`node tests/verify_excel_reader.js`、`node tests/verify_fuel_service.js`、`node tests/verify_fuel_view.js`
+  - `node tests/verify_variety_fixes.js`、`node tests/verify_variety_and_restore.js`、`node tests/verify_config_sync.js`、`node tests/verify_excel_reader.js`、`node tests/verify_fuel_service.js`、`node tests/verify_fuel_view.js`、`node tests/verify_total_energy.js`
 - スクリーンショット:
   - 画面確認用のスクリーンショットや HTML は、作業中は `screenshot/` の直下に採取すること
   - 検証が終わり完了報告をする前に、`screenshot/YYYYMMDDhhmm_変更内容/`（その作業の `history/` ファイルと同じ名前）を作成して移動すること

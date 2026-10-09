@@ -500,6 +500,11 @@ button, input, select {
   margin-bottom: 1.25rem;
 }
 
+/* 同じ幅の2列 (トータルエネルギーの4グラフ) */
+.chart-grid.chart-grid-equal {
+  grid-template-columns: 1fr 1fr;
+}
+
 .chart-card {
   background: var(--bg-card);
   padding: 1.25rem;
@@ -672,7 +677,8 @@ button, input, select {
    レスポンシブ
    ========================================================================= */
 @media (max-width: 900px) {
-  .chart-grid {
+  .chart-grid,
+  .chart-grid.chart-grid-equal {
     grid-template-columns: 1fr;
   }
 }

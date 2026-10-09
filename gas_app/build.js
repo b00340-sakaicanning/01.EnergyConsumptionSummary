@@ -42,8 +42,10 @@ function build() {
     'js/services/kpiService.js',
     'js/services/annualService.js',
     'js/services/fuelService.js',
+    'js/services/totalEnergyService.js',
     'js/components/charts.js',
     'js/fuelView.js',
+    'js/totalEnergyView.js',
     'js/app.js'
   ];
 

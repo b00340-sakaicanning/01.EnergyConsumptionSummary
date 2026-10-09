@@ -46,4 +46,8 @@ console.log('=== Test 5: グラフ目盛りスケール設定 ===');
 assert.deepStrictEqual(CONFIG.SCALE_CONFIG, config.SCALE_CONFIG, 'SCALE_CONFIG が一致しません');
 console.log('SCALE_CONFIG PASSED!');
 
+console.log('=== Test 6: トータルエネルギー集約シートの列 ===');
+assert.deepStrictEqual(CONFIG.TOTAL_ENERGY_SHEET_COLUMNS, config.TOTAL_ENERGY_SHEET_COLUMNS, 'TOTAL_ENERGY_SHEET_COLUMNS が一致しません');
+console.log('TOTAL_ENERGY_SHEET_COLUMNS PASSED!');
+
 console.log('CONFIG SYNC VERIFIED SUCCESSFULLY!');

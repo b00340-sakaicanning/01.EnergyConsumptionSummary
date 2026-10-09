@@ -2,13 +2,13 @@
  * gas_app/js/app.js
  * フロントエンドUI制御・イベントハンドリング・年間月別＆単月パイプライン連携
  * (月別電力使用量集約グラフ表示(総電力 2024).xlsx 準拠)
- * 燃料エネルギーの画面 (fuelView.js) との切り替えと、Excel・同期・エクスポートの共用もここで行う
+ * 燃料エネルギー (fuelView.js)・トータルエネルギー (totalEnergyView.js) の画面との切り替えと、Excel・同期・エクスポートの共用もここで行う
  */
 
 (function () {
   // アプリケーション状態
   const state = {
-    currentApp: 'power',            // 'power' (電力) | 'fuel' (燃料エネルギー)
+    currentApp: 'power',            // 'power' (電力) | 'fuel' (燃料エネルギー) | 'total' (トータルエネルギー)
     currentView: 'annualView',      // 'annualView' | 'monthlyView' | 'annualEquipmentView'
     currentAnnualMode: 'combined',   // 'combined' | 'waterOnly' | 'fillingOnly'
     currentMetric: 'powerKwh',       // 'powerKwh', 'operationMin', etc.
@@ -31,14 +31,32 @@
   const SCALE_STORAGE_KEY = 'energy_app_chart_scale_config_v1';
   // 目盛り自動算出の高さの目安。AppConfig.SCALE_CONFIG は起動時にGAS側の値で置き換わるため、読込時点の値を既定として保持する
   const DEFAULT_AUTO_LAYOUT = AppConfig.SCALE_CONFIG.autoLayout;
-  // 画面上部の副題 (表示中のアプリごと)
-  const APP_SUBTITLES = {
-    power: '月別電力使用量集約グラフ・品種別推移 ＆ 原単位KPIダッシュボード',
-    fuel: '月別燃料エネルギー使用量集約グラフ・品種別推移 ＆ 原単位KPIダッシュボード (A重油・LNG)'
+  // 画面 (アプリ) の定義。電力は3つのビューを持つ。
+  // 燃料エネルギー・トータルエネルギーは Excel だけで表示する画面で、ビュー1つと、その制御を行う画面部品 (view) を持つ
+  const APPS = {
+    power: {
+      subtitle: '月別電力使用量集約グラフ・品種別推移 ＆ 原単位KPIダッシュボード'
+    },
+    fuel: {
+      subtitle: '月別燃料エネルギー使用量集約グラフ・品種別推移 ＆ 原単位KPIダッシュボード (A重油・LNG)',
+      sectionId: 'fuelView',
+      sheetName: '燃料集約',
+      view: typeof FuelView !== 'undefined' ? FuelView : null
+    },
+    total: {
+      subtitle: '生産量＆エネルギー使用量・熱量・原単位・CO2排出量の推移 (かつらぎ工場エネルギー計算表)',
+      sectionId: 'totalEnergyView',
+      sheetName: 'トータルエネルギー集約',
+      view: typeof TotalEnergyView !== 'undefined' ? TotalEnergyView : null
+    }
   };
-  const hasFuelView = typeof FuelView !== 'undefined';
+  // Excel だけで表示する画面のID (画面部品が読み込まれているもの)
+  const EXCEL_APP_IDS = Object.keys(APPS).filter(id => APPS[id].view);
+  // 表示中の画面が Excel だけで表示する画面なら、その画面部品を返す (電力を表示中は null)
+  const getActiveExcelView = () => APPS[state.currentApp].view || null;
   const POWER_VIEW_IDS = ['annualView', 'annualEquipmentView', 'monthlyView'];
-  const FUEL_SHEET_NAME = '燃料集約';
+  const POWER_SHEET_NAMES = ['日別集約', 'KPI評価', '品種別集約'];
+  const workbookCache = new WeakMap(); // 読み込み済みExcelの解析結果
 
   // DOM要素
   let dropzone, fileInput, progressBarContainer, progressBarFill;
@@ -406,11 +424,11 @@
       switchMainView(viewParam);
     }
 
-    // 燃料エネルギーの画面の初期化 (保存済みの燃料データの復元を含む)
-    if (hasFuelView) {
-      FuelView.init({
-        getLoadedExcelFiles: () => state.loadedExcelFiles || [],
-        detectExcelKind,
+    // 燃料エネルギー・トータルエネルギーの画面の初期化 (保存済みのデータの復元を含む)
+    EXCEL_APP_IDS.forEach(appId => {
+      APPS[appId].view.init({
+        getLoadedWorkbooks,
+        getPetFiscalYears,
         getOperationMinutesByYm,
         showToast,
         formatNumber,
@@ -419,13 +437,14 @@
         hideLoading,
         renderMetricTable: renderAnnualTable,
         getAutoLayout,
-        handleDroppedFiles: handleFuelFiles,
+        handleDroppedFiles: handleExcelViewFiles,
         getAllFilesFromDataTransfer,
-        isActive: () => state.currentApp === 'fuel'
+        isActive: () => state.currentApp === appId
       });
-      if (urlParams.get('app') === 'fuel') {
-        switchApp('fuel');
-      }
+    });
+    const appParam = urlParams.get('app');
+    if (appParam && appParam !== 'power' && EXCEL_APP_IDS.includes(appParam)) {
+      switchApp(appParam);
     }
 
     // スプレッドシートから蓄積集約データの自動復元
@@ -433,39 +452,42 @@
   }
 
   /**
-   * アプリ切り替え (電力 ⇔ 燃料エネルギー)
-   * 電力は3つのビュー、燃料エネルギーは1つのビューを持つ。ヘッダーのボタンと同期状況は、表示中のアプリのものに切り替える
+   * アプリ切り替え (電力 ⇔ 燃料エネルギー ⇔ トータルエネルギー)
+   * ヘッダーのボタンと同期状況は、表示中のアプリのものに切り替える
    */
   function switchApp(appId) {
-    if (appId === 'fuel' && !hasFuelView) return;
-    state.currentApp = (appId === 'fuel') ? 'fuel' : 'power';
-    const isFuel = state.currentApp === 'fuel';
+    const target = APPS[appId] ? appId : 'power';
+    if (target !== 'power' && !APPS[target].view) return;
+    state.currentApp = target;
+    const isPower = target === 'power';
 
     document.querySelectorAll('.app-switch-btn').forEach(btn => {
       btn.classList.toggle('active', btn.getAttribute('data-app') === state.currentApp);
     });
-    setElemText('appSubtitle', APP_SUBTITLES[state.currentApp]);
+    setElemText('appSubtitle', APPS[state.currentApp].subtitle);
 
     const powerNav = document.getElementById('powerNav');
-    const fuelSec = document.getElementById('fuelView');
-    if (powerNav) powerNav.style.display = isFuel ? 'none' : '';
-    if (fuelSec) fuelSec.style.display = isFuel ? 'block' : 'none';
+    if (powerNav) powerNav.style.display = isPower ? '' : 'none';
+    Object.keys(APPS).forEach(id => {
+      const sec = APPS[id].sectionId ? document.getElementById(APPS[id].sectionId) : null;
+      if (sec) sec.style.display = (id === target) ? 'block' : 'none';
+    });
 
     // 目盛り設定とデモ読込は電力の画面でのみ使う
     const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    if (scaleSettingBtn) scaleSettingBtn.style.display = isFuel ? 'none' : '';
+    if (scaleSettingBtn) scaleSettingBtn.style.display = isPower ? '' : 'none';
     document.querySelectorAll('.dev-only-btn').forEach(btn => {
-      btn.style.display = (!isFuel && isLocal) ? 'inline-flex' : 'none';
+      btn.style.display = (isPower && isLocal) ? 'inline-flex' : 'none';
     });
 
-    if (isFuel) {
+    if (isPower) {
+      switchMainView(state.currentView);
+    } else {
       POWER_VIEW_IDS.forEach(id => {
         const sec = document.getElementById(id);
         if (sec) sec.style.display = 'none';
       });
-      FuelView.render();
-    } else {
-      switchMainView(state.currentView);
+      APPS[target].view.render();
     }
     updateSyncStatusUI();
   }
@@ -474,9 +496,10 @@
    * スプレッドシート反映ステータス表示の更新
    */
   function updateSyncStatusUI() {
-    // 燃料エネルギーの画面を表示中は、燃料のデータの反映状況を表示する
-    if (state.currentApp === 'fuel' && hasFuelView) {
-      FuelView.updateSyncStatusUI();
+    // 燃料エネルギー・トータルエネルギーの画面を表示中は、その画面のデータの反映状況を表示する
+    const excelView = getActiveExcelView();
+    if (excelView) {
+      excelView.updateSyncStatusUI();
       return;
     }
 
@@ -627,7 +650,7 @@
   }
 
   function setupEventListeners() {
-    // 0. アプリ切り替え (電力 ⇔ 燃料エネルギー)
+    // 0. アプリ切り替え (電力 ⇔ 燃料エネルギー ⇔ トータルエネルギー)
     document.querySelectorAll('.app-switch-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         switchApp(e.currentTarget.getAttribute('data-app'));
@@ -743,8 +766,9 @@
 
     if (syncBtn) {
       syncBtn.addEventListener('click', () => {
-        if (state.currentApp === 'fuel' && hasFuelView) {
-          FuelView.handleSync();
+        const excelView = getActiveExcelView();
+        if (excelView) {
+          excelView.handleSync();
         } else {
           handleSyncToSpreadsheet();
         }
@@ -852,8 +876,8 @@
     document.querySelectorAll('.main-nav-btn').forEach(btn => {
       btn.classList.toggle('active', btn.getAttribute('data-view') === viewId);
     });
-    // 燃料エネルギーの画面を表示中は、選択だけを覚えておく (電力に戻したときに表示する)
-    if (state.currentApp === 'fuel') return;
+    // 電力以外の画面を表示中は、選択だけを覚えておく (電力に戻したときに表示する)
+    if (state.currentApp !== 'power') return;
 
     const annualSec = document.getElementById('annualView');
     const monthlySec = document.getElementById('monthlyView');
@@ -1502,14 +1526,14 @@
       if (!applyExcelToLoadedMonths()) {
         showToast('エクセルファイルを読み込みました。CSVデータを投入してください', 'info');
       }
-      if (hasFuelView) FuelView.onExcelFilesChanged(false);
+      notifyExcelViews();
       if (fileInput) fileInput.value = '';
       return;
     }
 
     showProgress(65);
     runSingleMonthPipeline();
-    if (excelFiles.length > 0 && hasFuelView) FuelView.onExcelFilesChanged(false);
+    if (excelFiles.length > 0) notifyExcelViews();
     if (fileInput) fileInput.value = '';
   }
 
@@ -1566,10 +1590,20 @@
   }
 
   /**
-   * 燃料エネルギーの画面の投入口にファイルが投入されたときの処理
-   * Excelは電力の画面と共用するため、電力の読込済みの月にも反映する
+   * Excel が読み込まれたことを、燃料エネルギー・トータルエネルギーの画面へ知らせる
+   * 読込結果の通知は、表示中の画面だけが行う
    */
-  async function handleFuelFiles(files) {
+  function notifyExcelViews() {
+    EXCEL_APP_IDS.forEach(appId => {
+      APPS[appId].view.onExcelFilesChanged(state.currentApp === appId);
+    });
+  }
+
+  /**
+   * 燃料エネルギー・トータルエネルギーの画面の投入口にファイルが投入されたときの処理
+   * Excelは全画面で共用するため、電力の読込済みの月にも反映する
+   */
+  async function handleExcelViewFiles(files) {
     if (!files || files.length === 0) return;
 
     const validFiles = Array.from(files).filter(f => !f.name.startsWith('.') && !f.name.startsWith('._'));
@@ -1579,7 +1613,7 @@
     const excelFiles = validFiles.filter((f, i) => isExcelFile(lowerNames[i]));
 
     if (lowerNames.some(isLoggerFile)) {
-      showToast('ロガーファイル（TXT/CSV）は「⚡ 電力」の「単月詳細集約」で投入してください。燃料エネルギーの画面では Excel のみ読み込みます', 'warning', 12000);
+      showToast('ロガーファイル（TXT/CSV）は「⚡ 電力」の「単月詳細集約」で投入してください。この画面では Excel のみ読み込みます', 'warning', 12000);
     }
     if (excelFiles.length === 0) {
       if (!lowerNames.some(isLoggerFile)) showToast('Excelファイルが見つかりませんでした', 'error');
@@ -1588,7 +1622,39 @@
 
     await loadExcelFiles(excelFiles);
     applyExcelToLoadedMonths();
-    FuelView.onExcelFilesChanged(true);
+    notifyExcelViews();
+  }
+
+  /**
+   * 読み込み済みのExcelを、種別ごとのワークブックにして返す (解析はファイルごとに1回だけ行う)
+   * @returns {Object} { energy: Workbook[], pet: Workbook[] }
+   */
+  function getLoadedWorkbooks() {
+    const result = { energy: [], pet: [] };
+    (state.loadedExcelFiles || []).forEach(ef => {
+      const kind = detectExcelKind(ef.name);
+      if (kind !== 'energy' && kind !== 'pet') return;
+      try {
+        if (!workbookCache.has(ef)) workbookCache.set(ef, XLSX.read(ef.buffer, { type: 'array' }));
+        result[kind].push(workbookCache.get(ef));
+      } catch (err) {
+        console.warn('Excel parse error:', err);
+      }
+    });
+    return result;
+  }
+
+  /**
+   * 読み込み済みの月報PETに年度のシートがある年度を返す。
+   * 燃料エネルギーなど、Excelだけで表示する画面は、この年度だけを表示・保存の対象にする
+   * @returns {number[]|null} 年度の昇順。月報PETが読み込まれていない場合は null
+   */
+  function getPetFiscalYears() {
+    const petWorkbooks = getLoadedWorkbooks().pet;
+    if (petWorkbooks.length === 0) return null;
+    const years = new Set();
+    petWorkbooks.forEach(wb => ExcelReader.listSheetFiscalYears(wb).forEach(fy => years.add(fy)));
+    return Array.from(years).sort((a, b) => a - b);
   }
 
   /**
@@ -1827,7 +1893,9 @@
     renderAnnualEquipmentView();
 
     // 品種別の操業時間が変わるため、燃料エネルギーの画面にも知らせる
-    if (hasFuelView) FuelView.onOperationDataChanged();
+    EXCEL_APP_IDS.forEach(appId => {
+      if (APPS[appId].view.onOperationDataChanged) APPS[appId].view.onOperationDataChanged();
+    });
   }
 
   function runSingleMonthPipeline() {
@@ -2066,7 +2134,7 @@
       } else {
         // 2. ローカル開発環境用フォールバック (保持データセットからスプレッドシート互換3シートを構築)
         sheetsData = buildLocalExportSheets();
-        if (hasFuelView) sheetsData[FUEL_SHEET_NAME] = FuelView.buildExportRows();
+        EXCEL_APP_IDS.forEach(appId => { sheetsData[APPS[appId].sheetName] = APPS[appId].view.buildExportRows(); });
       }
 
       if (!sheetsData || Object.keys(sheetsData).length === 0) {
@@ -2075,17 +2143,17 @@
 
       // 3. SheetJSでワークブックを構築
       const wb = XLSX.utils.book_new();
-      const targetSheetNames = ['日別集約', 'KPI評価', '品種別集約', FUEL_SHEET_NAME];
+      const extraSheetNames = Object.keys(APPS).filter(id => APPS[id].sheetName).map(id => APPS[id].sheetName);
+      const exportedSheetNames = [];
       let exportedSheetCount = 0;
-      let fuelSheetExported = false;
 
-      targetSheetNames.forEach(sName => {
+      POWER_SHEET_NAMES.concat(extraSheetNames).forEach(sName => {
         const rows = sheetsData[sName];
         if (rows && rows.length > 0) {
           const ws = XLSX.utils.aoa_to_sheet(rows);
           XLSX.utils.book_append_sheet(wb, ws, sName);
           exportedSheetCount++;
-          if (sName === FUEL_SHEET_NAME) fuelSheetExported = true;
+          exportedSheetNames.push(sName);
         }
       });
 
@@ -2098,9 +2166,8 @@
       const fileName = `エネルギー集計データ_${dateStr}.xlsx`;
       XLSX.writeFile(wb, fileName);
 
-      showToast(fuelSheetExported
-        ? `スプレッドシートの4シート（日別集約・KPI評価・品種別集約・${FUEL_SHEET_NAME}）をExcel出力しました`
-        : `スプレッドシートの3シート（日別集約・KPI評価・品種別集約）をExcel出力しました`, 'success');
+      // 実際に出力したシートを通知する (データの無いシートは出力されない)
+      showToast(`スプレッドシートの${exportedSheetNames.length}シート（${exportedSheetNames.join('・')}）をExcel出力しました`, 'success');
     } catch (err) {
       console.error('Export Excel Error:', err);
       showToast(`Excelエクスポートエラー: ${err.message}`, 'error');

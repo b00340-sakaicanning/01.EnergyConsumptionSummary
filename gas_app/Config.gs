@@ -15,8 +15,29 @@ var CONFIG = {
     DAILY: '日別集約',
     VARIETY: '品種別集約',
     KPI: 'KPI評価',
-    FUEL: '燃料集約'
+    FUEL: '燃料集約',
+    TOTAL_ENERGY: 'トータルエネルギー集約'
   },
+
+  // 「トータルエネルギー集約」シートの列 (対象年月に続く列。key はクライアントから届く月次データの項目名)
+  // ※ gas_app/js/config.js の TOTAL_ENERGY_SHEET_COLUMNS と同じ内容にすること
+  TOTAL_ENERGY_SHEET_COLUMNS: [
+    { key: 'productionCases', header: '生産数量(ケース)' },
+    { key: 'litersPerCase', header: '1ケースあたりの容量(L)' },
+    { key: 'heavyOilGj', header: 'A重油 熱量(GJ)' },
+    { key: 'lngGj', header: 'LNG 熱量(GJ)' },
+    { key: 'electricityGj', header: '電気 熱量(GJ)' },
+    { key: 'totalGj', header: '合計 熱量(GJ)' },
+    { key: 'crudeOilKl', header: '原油換算量(kl)' },
+    { key: 'heavyOilCo2', header: 'A重油 CO2(t-CO2)' },
+    { key: 'lngCo2', header: 'LNG CO2(t-CO2)' },
+    { key: 'electricityCo2', header: '電気 CO2(t-CO2)' },
+    { key: 'totalCo2', header: '合計 CO2(t-CO2)' },
+    { key: 'solarKwhThousand', header: '太陽光 発電量(千kWh)' },
+    { key: 'solarGj', header: '太陽光 熱量(GJ)' },
+    { key: 'solarCo2', header: '太陽光 CO2(t-CO2)' },
+    { key: 'noSolarCrudeOilKl', header: '原油換算量 太陽光無し想定(kl)' }
+  ],
 
   // 品種8大分類キー
   VARIETY_KEYS: ['2.0L', '1.5L', '1.0L', '600mL丸', '500mL丸', '500mL角', '350mL', '280mL'],

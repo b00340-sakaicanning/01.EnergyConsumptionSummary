@@ -32,6 +32,20 @@
   }
 
   /**
+   * ワークブックに年度のシートがある年度を列挙する (シート名に含まれる4桁の年度。例: '2024'、'月報PET(2024）')
+   * @param {Workbook} workbook
+   * @returns {number[]} 年度の昇順
+   */
+  function listSheetFiscalYears(workbook) {
+    const years = new Set();
+    ((workbook && workbook.SheetNames) || []).forEach(name => {
+      const m = String(name).match(/(?:^|\D)((?:19|20)\d{2})(?:\D|$)/);
+      if (m) years.add(parseInt(m[1], 10));
+    });
+    return Array.from(years).sort((a, b) => a - b);
+  }
+
+  /**
    * かつらぎ工場エネルギー計算表から特定年月の電気料金データを抽出する
    * @param {ArrayBuffer|Uint8Array|Workbook} workbookData
    * @param {string} yearMonth 'YYYYMM' (例: '202404', '202503')
@@ -256,6 +270,73 @@
     };
   }
 
+  // ラベルの比較用: 全角・半角を揃え、空白を除く
+  const normalizeLabel = v => (v === undefined || v === null) ? '' : String(v).normalize('NFKC').replace(/[\s　]/g, '');
+  // セルの値を数値にする (空欄や文字列は null)
+  const cellToNumber = v => {
+    if (typeof v === 'number') return isFinite(v) ? v : null;
+    if (typeof v === 'string' && v.trim() !== '' && !isNaN(parseFloat(v))) return parseFloat(v);
+    return null;
+  };
+
+  /**
+   * エネルギー計算表の年度シートを開き、月見出し行と、A列のラベルによる区間 (A重油 → LNG → 使用電力) を特定する
+   * (燃料・トータルエネルギーの読み取りの共通処理。行番号は年度によって変わるため、ラベルで探す)
+   * @param {ArrayBuffer|Uint8Array|Workbook} workbookData
+   * @param {number|string} fiscalYear 年度 (例: 2024 → 2024年4月〜2025年3月)
+   * @returns {Object} { fiscalYear, sheetFound, sectionsFound, data, monthCols, headerRowIdx, oilStart, lngStart, powerStart, findRow, valueAt }
+   *   sheetFound: 対象年度のシートがあるか / sectionsFound: 月見出し行と3つの区間を特定できたか
+   *   monthCols: [{ ym, col }] (4月〜翌3月) / findRow(from, to, predicate): 条件に合う最初の行 (無ければ -1) / valueAt(rowIdx, col): 数値または null
+   */
+  function openEnergyYearSheet(workbookData, fiscalYear) {
+    const XLSX = XLSXLib || (typeof window !== 'undefined' ? window.XLSX : (typeof global !== 'undefined' ? global.XLSX : null));
+    if (!XLSX) {
+      throw new Error('SheetJS (XLSX) library is not loaded');
+    }
+
+    const wb = typeof workbookData.Sheets === 'object' ? workbookData : XLSX.read(workbookData, { type: 'array' });
+    const fy = parseInt(fiscalYear, 10);
+    const sheet = { fiscalYear: fy, sheetFound: false, sectionsFound: false };
+
+    const targetSheetName = findFiscalYearSheet(wb.SheetNames, fy);
+    if (!targetSheetName) return sheet;
+    sheet.sheetFound = true;
+
+    const data = XLSX.utils.sheet_to_json(wb.Sheets[targetSheetName], { header: 1, raw: true });
+    sheet.data = data;
+    sheet.findRow = (from, to, predicate) => {
+      for (let r = Math.max(from, 0); r < Math.min(to, data.length); r++) {
+        if (predicate(data[r] || [])) return r;
+      }
+      return -1;
+    };
+    sheet.valueAt = (rowIdx, col) => rowIdx < 0 ? null : cellToNumber((data[rowIdx] || [])[col]);
+
+    // 対象年度の年月 (4月〜翌3月) と、その列位置
+    sheet.monthCols = AppConfig.FISCAL_MONTH_ORDER.map(m => ({
+      ym: `${m >= 4 ? fy : fy + 1}${String(m).padStart(2, '0')}`,
+      col: getFiscalMonthColIndex(m)
+    }));
+
+    // 1. 月見出し行: 12か月分の列に、対象年度の各月の日付 (Excelのシリアル値) が並ぶ行
+    const serialToYm = serial => {
+      const d = new Date(Date.UTC(1899, 11, 30) + Math.round(serial) * 86400000);
+      return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    };
+    sheet.headerRowIdx = sheet.findRow(0, 60, row => sheet.monthCols.every(mc => typeof row[mc.col] === 'number' && serialToYm(row[mc.col]) === mc.ym));
+    if (sheet.headerRowIdx < 0) return sheet;
+
+    // 2. A列のラベルで区間を特定 (A重油 → LNG → 使用電力 の順に並ぶ)
+    sheet.oilStart = sheet.findRow(sheet.headerRowIdx + 1, data.length, row => normalizeLabel(row[0]) === 'A重油');
+    sheet.lngStart = sheet.oilStart < 0 ? -1 : sheet.findRow(sheet.oilStart + 1, data.length, row => normalizeLabel(row[0]) === 'LNG');
+    sheet.powerStart = sheet.lngStart < 0 ? -1 : sheet.findRow(sheet.lngStart + 1, data.length, row => normalizeLabel(row[0]).indexOf('使用電力') === 0);
+    sheet.sectionsFound = sheet.oilStart >= 0 && sheet.lngStart >= 0 && sheet.powerStart >= 0;
+    return sheet;
+  }
+
+  const isHeatRow = row => normalizeLabel(row[1]) === '熱量GJ';
+  const isCo2Row = row => normalizeLabel(row[1]) === 't-CO2';
+
   /**
    * かつらぎ工場エネルギー計算表から、対象年度の燃料 (A重油・LNG) の月別データを抽出する
    *
@@ -270,70 +351,19 @@
    *   各値は数値。セルが空欄の場合は null
    */
   function parseFuelEnergyTable(workbookData, fiscalYear) {
-    const XLSX = XLSXLib || (typeof window !== 'undefined' ? window.XLSX : (typeof global !== 'undefined' ? global.XLSX : null));
-    if (!XLSX) {
-      throw new Error('SheetJS (XLSX) library is not loaded');
-    }
+    const sheet = openEnergyYearSheet(workbookData, fiscalYear);
+    const result = { fiscalYear: sheet.fiscalYear, sheetFound: sheet.sheetFound, layoutFound: false, months: {} };
+    if (!sheet.sectionsFound) return result;
+    const { monthCols, oilStart, lngStart, powerStart, findRow, valueAt } = sheet;
 
-    const wb = typeof workbookData.Sheets === 'object' ? workbookData : XLSX.read(workbookData, { type: 'array' });
-    const fy = parseInt(fiscalYear, 10);
-    const result = { fiscalYear: fy, sheetFound: false, layoutFound: false, months: {} };
-
-    const targetSheetName = findFiscalYearSheet(wb.SheetNames, fy);
-    if (!targetSheetName) return result;
-    result.sheetFound = true;
-
-    const data = XLSX.utils.sheet_to_json(wb.Sheets[targetSheetName], { header: 1, raw: true });
-    const label = v => (v === undefined || v === null) ? '' : String(v).normalize('NFKC').replace(/[\s　]/g, '');
-    const toNumber = v => {
-      if (typeof v === 'number') return isFinite(v) ? v : null;
-      if (typeof v === 'string' && v.trim() !== '' && !isNaN(parseFloat(v))) return parseFloat(v);
-      return null;
-    };
-
-    // 対象年度の年月 (4月〜翌3月) と、その列位置
-    const monthCols = AppConfig.FISCAL_MONTH_ORDER.map(m => ({
-      ym: `${m >= 4 ? fy : fy + 1}${String(m).padStart(2, '0')}`,
-      col: getFiscalMonthColIndex(m)
-    }));
-
-    // 1. 月見出し行: 12か月分の列に、対象年度の各月の日付 (Excelのシリアル値) が並ぶ行
-    const serialToYm = serial => {
-      const d = new Date(Date.UTC(1899, 11, 30) + Math.round(serial) * 86400000);
-      return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-    };
-    let headerRowIdx = -1;
-    for (let r = 0; r < Math.min(data.length, 60); r++) {
-      const row = data[r] || [];
-      if (monthCols.every(mc => typeof row[mc.col] === 'number' && serialToYm(row[mc.col]) === mc.ym)) {
-        headerRowIdx = r;
-        break;
-      }
-    }
-    if (headerRowIdx < 0) return result;
-
-    // 2. A列のラベルで区間を特定 (A重油 → LNG → 使用電力 の順に並ぶ)
-    const findRow = (from, to, predicate) => {
-      for (let r = from; r < Math.min(to, data.length); r++) {
-        if (predicate(data[r] || [])) return r;
-      }
-      return -1;
-    };
-    const oilStart = findRow(headerRowIdx + 1, data.length, row => label(row[0]) === 'A重油');
-    const lngStart = oilStart < 0 ? -1 : findRow(oilStart + 1, data.length, row => label(row[0]) === 'LNG');
-    const powerStart = lngStart < 0 ? -1 : findRow(lngStart + 1, data.length, row => label(row[0]).indexOf('使用電力') === 0);
-    if (oilStart < 0 || lngStart < 0 || powerStart < 0) return result;
-
-    // 3. 各区間の中で、熱量と購入費用の行を特定
-    const isHeatRow = row => label(row[1]) === '熱量GJ';
-    const isCostRow = row => label(row[1]).indexOf('購入費用(千円)') === 0;
+    // 各区間の中で、熱量と購入費用の行を特定
+    const isCostRow = row => normalizeLabel(row[1]).indexOf('購入費用(千円)') === 0;
     const oilHeatRow = findRow(oilStart, lngStart, isHeatRow);
     const oilCostRow = findRow(oilStart, lngStart, isCostRow);
     const lngHeatRow = findRow(lngStart, powerStart, isHeatRow);
     const lngCostRow = findRow(lngStart, powerStart, isCostRow);
     if (oilHeatRow < 0 || oilCostRow < 0 || lngHeatRow < 0) return result;
 
-    const valueAt = (rowIdx, col) => rowIdx < 0 ? null : toNumber((data[rowIdx] || [])[col]);
     // LNGの購入費用の行が無い年度は、LNGを使っていない (熱量がすべて0) 場合に限り読み取り可とする
     if (lngCostRow < 0 && monthCols.some(mc => (valueAt(lngHeatRow, mc.col) || 0) > 0)) return result;
 
@@ -350,6 +380,84 @@
   }
 
   /**
+   * かつらぎ工場エネルギー計算表から、対象年度のトータルエネルギー (生産数量・熱量・原油換算量・CO2) の月別データを抽出する
+   *
+   * 熱量・CO2・原油換算量の係数は年度によって違うため、再計算せず、シート上で計算済みの行の値を読む。
+   * 行は次のラベルで探す (行番号は年度によって変わるため固定しない)。
+   * - A重油・LNG・使用電力の各区間の、B列が「熱量GJ」「t-CO2」の行 (電気は「熱量GJ（昼間）」などを除く合計の行)
+   * - A列が「合計GJ」「合計t-CO2」「合計GJ原油換算量」の行 (それぞれ最初に現れる行。2023年度以降は「太陽光発電 無しの想定値」の同名の行が後に続く)
+   * - A列が「生産数量」で B列が「ケース」の行、A列が「PET生産量」の行の B列 (1ケースあたりの容量 L)
+   * - A列が「太陽光発電量」の区間 (2023年度以降のみ) の発電量・熱量GJ・t-CO2
+   *
+   * @param {ArrayBuffer|Uint8Array|Workbook} workbookData
+   * @param {number|string} fiscalYear 年度
+   * @returns {Object} { fiscalYear, sheetFound, layoutFound, hasSolar, months: { [ym]: {...} } }
+   *   months[ym]: { productionCases, litersPerCase, heavyOilGj, lngGj, electricityGj, totalGj, crudeOilKl,
+   *                 heavyOilCo2, lngCo2, electricityCo2, totalCo2, solarKwhThousand, solarGj, solarCo2, noSolarCrudeOilKl }
+   *   各値は数値。セルが空欄、または行が無い場合は null (太陽光の項目は、太陽光の行が無い年度では null)
+   */
+  function parseTotalEnergyTable(workbookData, fiscalYear) {
+    const sheet = openEnergyYearSheet(workbookData, fiscalYear);
+    const result = { fiscalYear: sheet.fiscalYear, sheetFound: sheet.sheetFound, layoutFound: false, hasSolar: false, months: {} };
+    if (!sheet.sectionsFound) return result;
+    const { data, monthCols, oilStart, lngStart, powerStart, findRow, valueAt } = sheet;
+    const labelA = row => normalizeLabel(row[0]);
+
+    // 合計の3行 (使用電力の区間より下で、最初に現れるもの)
+    const totalGjRow = findRow(powerStart + 1, data.length, row => labelA(row) === '合計GJ');
+    const totalCo2Row = totalGjRow < 0 ? -1 : findRow(totalGjRow + 1, totalGjRow + 8, row => labelA(row) === '合計t-CO2');
+    const crudeOilRow = totalGjRow < 0 ? -1 : findRow(totalGjRow + 1, totalGjRow + 8, row => labelA(row) === '合計GJ原油換算量');
+    if (totalGjRow < 0 || totalCo2Row < 0 || crudeOilRow < 0) return result;
+
+    // 使用電力の区間 (太陽光発電量の行があれば、その手前まで)
+    const solarStart = findRow(powerStart + 1, totalGjRow, row => labelA(row).indexOf('太陽光発電量') === 0);
+    const powerEnd = solarStart >= 0 ? solarStart : totalGjRow;
+
+    const oilHeatRow = findRow(oilStart, lngStart, isHeatRow);
+    const lngHeatRow = findRow(lngStart, powerStart, isHeatRow);
+    const powerHeatRow = findRow(powerStart, powerEnd, isHeatRow);
+    const productionRow = findRow(crudeOilRow + 1, data.length, row => labelA(row) === '生産数量' && normalizeLabel(row[1]) === 'ケース');
+    if (oilHeatRow < 0 || lngHeatRow < 0 || powerHeatRow < 0 || productionRow < 0) return result;
+
+    const oilCo2Row = findRow(oilStart, lngStart, isCo2Row);
+    const lngCo2Row = findRow(lngStart, powerStart, isCo2Row);
+    const powerCo2Row = findRow(powerStart, powerEnd, isCo2Row);
+    const solarHeatRow = solarStart < 0 ? -1 : findRow(solarStart, totalGjRow, isHeatRow);
+    const solarCo2Row = solarStart < 0 ? -1 : findRow(solarStart, totalGjRow, isCo2Row);
+
+    // 太陽光発電 無しの想定値の原油換算量 (合計の3行のすぐ下にある、同名の行)
+    const noSolarLabelRow = solarStart < 0 ? -1 : findRow(crudeOilRow + 1, crudeOilRow + 4, row => labelA(row).indexOf('太陽光発電無しの想定値') === 0);
+    const noSolarCrudeOilRow = noSolarLabelRow < 0 ? -1 : findRow(noSolarLabelRow + 1, noSolarLabelRow + 6, row => labelA(row) === '合計GJ原油換算量');
+
+    // 1ケースあたりの容量 (L)。「PET生産量」の行の B列。読めない場合は 12L
+    const petRow = findRow(crudeOilRow + 1, productionRow + 1, row => labelA(row) === 'PET生産量');
+    const litersPerCase = (petRow >= 0 && cellToNumber((data[petRow] || [])[1]) > 0) ? cellToNumber(data[petRow][1]) : 12;
+
+    result.layoutFound = true;
+    result.hasSolar = solarStart >= 0;
+    monthCols.forEach(mc => {
+      result.months[mc.ym] = {
+        productionCases: valueAt(productionRow, mc.col),
+        litersPerCase: litersPerCase,
+        heavyOilGj: valueAt(oilHeatRow, mc.col),
+        lngGj: valueAt(lngHeatRow, mc.col),
+        electricityGj: valueAt(powerHeatRow, mc.col),
+        totalGj: valueAt(totalGjRow, mc.col),
+        crudeOilKl: valueAt(crudeOilRow, mc.col),
+        heavyOilCo2: valueAt(oilCo2Row, mc.col),
+        lngCo2: valueAt(lngCo2Row, mc.col),
+        electricityCo2: valueAt(powerCo2Row, mc.col),
+        totalCo2: valueAt(totalCo2Row, mc.col),
+        solarKwhThousand: valueAt(solarStart, mc.col),
+        solarGj: valueAt(solarHeatRow, mc.col),
+        solarCo2: valueAt(solarCo2Row, mc.col),
+        noSolarCrudeOilKl: valueAt(noSolarCrudeOilRow, mc.col)
+      };
+    });
+    return result;
+  }
+
+  /**
    * 4月始まりの年度月インデックス（4月=2, 5月=3 ... 3月=13 等の目安）
    */
   function getFiscalMonthColIndex(calendarMonth) {
@@ -359,8 +467,10 @@
   }
 
   return {
+    listSheetFiscalYears,
     parseEnergyCalculationTable,
     parsePetMonthlyReport,
-    parseFuelEnergyTable
+    parseFuelEnergyTable,
+    parseTotalEnergyTable
   };
 }));
