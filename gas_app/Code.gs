@@ -1,6 +1,7 @@
 /**
  * gas_app/Code.gs
  * エネルギー使用量集計システム GASバックエンド (doGet / スプレッドシートへの保存・復元・エクスポート用データ取得)
+ * 画面: doGet (アプリ本体 index.html、?page=manual で操作マニュアル manual.html) / getAppUrl
  * 電力: saveAggregatedData / loadSavedSummaryFromSpreadsheet
  * 燃料エネルギー: saveFuelMonthlyData / loadSavedFuelData
  * トータルエネルギー: saveTotalEnergyMonthlyData / loadSavedTotalEnergyData
@@ -9,13 +10,28 @@
 
 /**
  * Webアプリケーションのエントリポイント (GET)
+ * URL に ?page=manual が付いている場合は操作マニュアル (manual.html)、それ以外はアプリ本体 (index.html) を返す
  */
 function doGet(e) {
+  if (e && e.parameter && e.parameter.page === 'manual') {
+    return HtmlService.createHtmlOutputFromFile('manual')
+      .setTitle('エネルギー使用量集計システム 操作マニュアル')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
   var template = HtmlService.createTemplateFromFile('index');
   return template.evaluate()
     .setTitle('エネルギー使用量集計システム')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/**
+ * Webアプリの公開URLを返す (操作マニュアルを別タブで開くために、画面側から呼び出す)
+ */
+function getAppUrl() {
+  return ScriptApp.getService().getUrl();
 }
 
 /**

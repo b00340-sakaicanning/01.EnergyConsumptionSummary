@@ -132,11 +132,63 @@ button, input, select {
   color: var(--text-muted);
 }
 
+/* 反映状況と機能ボタンは、タイトルの下の段に並べる */
 .header-actions {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   flex-wrap: wrap;
+  flex: 1 1 100%;
+}
+
+/* 操作マニュアルを別タブで開くボタン (ヘッダーの右上隅。機能ボタンとは別の段に置く) */
+.manual-link-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.55rem 0.95rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--primary);
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.manual-link-btn:hover {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--primary-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.manual-link-btn:active {
+  transform: translateY(0);
+}
+
+.manual-link-btn .manual-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.manual-link-btn .external-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  color: var(--text-muted);
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.manual-link-btn:hover .external-icon {
+  color: var(--primary-hover);
+  transform: translate(1px, -1px);
 }
 
 /* =========================================================================
@@ -1132,6 +1184,16 @@ button, input, select {
           <p id="appSubtitle">月別電力使用量集約グラフ・品種別推移 ＆ 原単位KPIダッシュボード</p>
         </div>
       </div>
+      <!-- 操作マニュアル (別タブで開く)。ヘッダーの右上隅に置く -->
+      <a href="#" id="manualBtn" class="manual-link-btn" title="操作マニュアルを別画面で開く">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="manual-icon">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+        </svg>
+        <span>マニュアル</span>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="external-icon">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+        </svg>
+      </a>
       <div class="header-actions">
         <!-- 読込・反映状況ステータス表示 -->
         <div id="syncStatusBadge" class="sync-status-badge" style="display: none;">
@@ -7425,6 +7487,11 @@ button, input, select {
       exportBtn.addEventListener('click', handleExportExcel);
     }
 
+    const manualBtn = document.getElementById('manualBtn');
+    if (manualBtn) {
+      manualBtn.addEventListener('click', openManualWindow);
+    }
+
     // 6. 単月ファイルドラッグ＆ドロップ
     if (dropzone && fileInput) {
       ['dragenter', 'dragover'].forEach(eventName => {
@@ -7456,6 +7523,40 @@ button, input, select {
         handleFiles(files);
       });
     }
+  }
+
+  /**
+   * 操作マニュアルを別タブで開く
+   * - ローカル開発環境: 同じフォルダの manual.html を開く
+   * - GAS: Webアプリの公開URLに ?page=manual を付けて開く (doGet が manual.html を返す)。
+   *   GAS の画面は枠 (iframe) の中で動くため、公開URLはサーバーから取得する
+   */
+  function openManualWindow(event) {
+    if (event) event.preventDefault();
+
+    const isLocal = window.location.protocol === 'file:' ||
+      window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocal) {
+      window.open('manual.html', '_blank');
+      return;
+    }
+
+    const openWithBaseUrl = (baseUrl) => {
+      const url = baseUrl || window.location.href.split('#')[0];
+      const base = url.replace(/([?&])page=manual(&|$)/, '$1').replace(/[?&]$/, '');
+      window.open(base + (base.indexOf('?') !== -1 ? '&' : '?') + 'page=manual', '_blank');
+    };
+    const canAskServer = typeof google !== 'undefined' && google.script && google.script.run &&
+      typeof google.script.run.getAppUrl === 'function';
+    if (!canAskServer) {
+      // 古い Code.gs (公開URLを返す関数が無い) の場合は、現在のURLから組み立てる
+      openWithBaseUrl(null);
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(url => openWithBaseUrl(url))
+      .withFailureHandler(() => openWithBaseUrl(null))
+      .getAppUrl();
   }
 
   /**

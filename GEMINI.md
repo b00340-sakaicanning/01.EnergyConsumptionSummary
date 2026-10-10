@@ -47,14 +47,20 @@
 │   ├── verify_fuel_service.js           # 燃料エネルギーの集計の検証 (参考Excelの値と突合)
 │   ├── verify_fuel_view.js              # 燃料エネルギー画面のデータ処理の検証 (模擬シートを使用)
 │   └── verify_total_energy.js           # トータルエネルギーの読み取り・集計・画面のデータ処理の検証 (模擬シートを使用)
+├── tools/                               # 開発用の道具 (GASへはデプロイしない)
+│   ├── capture_manual_screenshots.js    # 操作マニュアル用の注釈付きスクリーンショットを撮影し、gas_app/manual_images/ に保存
+│   └── browserDriver.js                 # ヘッドレス Chrome の操作部品 (上記が使用。追加のパッケージは不要)
 ├── screenshot/                          # 画面確認時のスクリーンショット
 │   └── YYYYMMDDhhmm_変更内容/           # 作業ごとのフォルダ (history/ の履歴ファイルと同じ名前)
 ├── gas_app/                             # アプリケーション本体
-│   ├── Code.gs                          # GASバックエンド (doGet / 電力・燃料・トータルエネルギーの保存と復元 / エクスポート用データ取得)
+│   ├── Code.gs                          # GASバックエンド (doGet (アプリ本体・操作マニュアル) / 電力・燃料・トータルエネルギーの保存と復元 / エクスポート用データ取得)
 │   ├── Config.gs                        # 設定値・マスター定義
-│   ├── build.js                         # 自己完結型 index.html 生成スクリプト
+│   ├── build.js                         # 自己完結型 index.html と manual.html の生成スクリプト
 │   ├── index.html                       # SPAフロントエンド本番成果物 (CSS/JSインライン統合)
 │   ├── index.template.html              # フロントエンドHTMLテンプレート
+│   ├── manual.html                      # 操作マニュアルの本番成果物 (画像埋め込み。生成物)
+│   ├── manual.template.html             # 操作マニュアルの原本 (本文と専用CSS)
+│   ├── manual_images/                   # 操作マニュアルの図 (WebP。撮影スクリプトで生成)
 │   ├── css/
 │   │   └── style.css                    # スタイリング (ライトテーマ)
 │   ├── js/
@@ -83,7 +89,9 @@
 
 アプリは、画面上部の切替ボタンで「電力」「燃料エネルギー」「トータルエネルギー」を切り替える。燃料エネルギーとトータルエネルギーは Excel だけで表示する画面で、それぞれ計算（`fuelService.js`、`totalEnergyService.js`）と画面・保存（`fuelView.js`、`totalEnergyView.js`）に分かれ、Excel の読み込みとグラフの共通部品は全画面で共用する。この2つの画面が表示するのは、月報PETに年度のシートがある年度だけ。スプレッドシートは6シート（電力の4シートと `燃料集約`・`トータルエネルギー集約`）。
 
-GASへデプロイするのは `Code.gs`、`Config.gs`、`index.html` の3ファイルのみ。`css/`、`js/`、`index.template.html` を変更したら `node gas_app/build.js` で `index.html` を再生成する。
+GASへデプロイするのは `Code.gs`、`Config.gs`、`index.html`、`manual.html` の4ファイルのみ。`css/`、`js/`、`index.template.html` を変更したら `node gas_app/build.js` で `index.html` を再生成する。
+
+操作マニュアルは、ヘッダーの「マニュアル」ボタンから別タブで開く1枚のページ。原本は `gas_app/manual.template.html` と `gas_app/manual_images/` で、`node gas_app/build.js` が画像を埋め込んだ `gas_app/manual.html` を生成する（GAS では `doGet` が `?page=manual` で返す）。
 
 ## ドキュメント(追加)
 | ファイル | 用途 |
@@ -116,5 +124,9 @@ GASへデプロイするのは `Code.gs`、`Config.gs`、`index.html` の3ファ
   - `history/` には、移動後のフォルダを含めたパスを記載すること
   - `screenshot/` の直下には、確認途中のファイル以外を残さないこと
 - テンプレートの目印: `index.template.html` の `<!-- CSSスタイル -->` と `<!-- スクリプト読み込み` で始まるコメントはビルドの置換開始位置の目印のため消さないこと。その目印から `</head>`・`</body>` までの間に、`</head>`・`</body>` という文字列を書かないこと
+- 操作マニュアル:
+  - `gas_app/manual.html` は生成物のため直接編集しないこと。本文は `gas_app/manual.template.html` を直し、`node gas_app/build.js` で生成すること
+  - 画面の表示・操作・文言を変えたら、マニュアルの該当する説明と図も見直すこと。図は `node tools/capture_manual_screenshots.js` で撮り直すこと（Chrome と `reference/` の実データが必要）
+  - 本文は です・ます調で、実装用語は書かないこと。画面上の文言は `<span class="ui-label">` で囲んで実際の画面と同じ表記にし、図の中の番号は `<span class="num-badge">` で指して図と一致させること。図は【図N-M】を章ごとに欠番なく振り、章・節を増やしたら目次にも追加すること。インラインの style と Markdown の記法は使わないこと
 - JSファイルの追加: `gas_app/build.js` の `jsFiles` と、`index.template.html` 末尾のローカル用ローダーの一覧の両方に、依存順で追加すること
 

@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>工場エネルギー使用量集計・分析システム 操作マニュアル</title>
+  <!--
+    操作マニュアルの原本。
+    - 画像は manual_images/ のファイルを参照する。node gas_app/build.js が、画像を埋め込んだ manual.html (GASへ貼り付けるファイル) を生成する
+    - 画像は node tools/capture_manual_screenshots.js で撮影する。図の中の番号と、本文の番号 (num-badge) を対応させること
+    - 画面上の文言 (ボタン名・見出しなど) は ui-label クラスで囲み、実際の画面と同じ表記で書くこと
+    - 外部のCSS・JavaScript・フォントは読み込まない (GAS上でも、印刷でも、そのまま表示できるようにするため)
+  -->
+  <style>
+    :root {
+      --primary: #0369a1;
+      --primary-strong: #075985;
+      --primary-light: #e0f2fe;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --accent-red: #ef4444;
+      --accent-green: #10b981;
+      --sidebar-width: 310px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", Meiryo, Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--text);
+      background-color: var(--bg);
+      line-height: 1.7;
+      display: flex;
+    }
+
+    /* ----- 目次 (左に追従) ----- */
+    .sidebar {
+      width: var(--sidebar-width);
+      height: 100vh;
+      position: sticky;
+      top: 0;
+      background: #ffffff;
+      border-right: 1px solid var(--border);
+      padding: 28px 20px;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+
+    .sidebar-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--primary-light);
+    }
+
+    .sidebar-nav {
+      list-style: none;
+    }
+
+    .sidebar-nav li {
+      margin-bottom: 4px;
+    }
+
+    .sidebar-nav a {
+      display: block;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.88rem;
+      padding: 6px 10px;
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+
+    .sidebar-nav a:hover {
+      background-color: var(--primary-light);
+      color: var(--primary);
+    }
+
+    .sidebar-nav .sub-item {
+      padding-left: 22px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    .print-btn {
+      display: block;
+      width: 100%;
+      margin-top: 24px;
+      padding: 10px 14px;
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.88rem;
+      cursor: pointer;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .print-btn:hover {
+      opacity: 0.9;
+    }
+
+    /* ----- 本文 ----- */
+    .main-wrapper {
+      flex: 1;
+      min-width: 0;
+      padding: 40px 48px;
+      max-width: 1100px;
+    }
+
+    .header-banner {
+      background: linear-gradient(135deg, #075985 0%, #0284c7 100%);
+      color: #ffffff;
+      padding: 36px 40px;
+      border-radius: 12px;
+      margin-bottom: 36px;
+      box-shadow: 0 10px 25px -5px rgba(3, 105, 161, 0.25);
+    }
+
+    .header-banner h1 {
+      font-size: 1.75rem;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 10px;
+    }
+
+    .header-banner p {
+      font-size: 0.95rem;
+      color: #f0f9ff;
+      line-height: 1.7;
+      margin-bottom: 0;
+    }
+
+    .section {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 36px;
+      margin-bottom: 32px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+      scroll-margin-top: 24px;
+    }
+
+    h2 {
+      font-size: 1.4rem;
+      color: #0f172a;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--border);
+    }
+
+    h3 {
+      font-size: 1.12rem;
+      color: #1e293b;
+      margin: 30px 0 14px 0;
+      padding-left: 10px;
+      border-left: 4px solid var(--primary);
+      scroll-margin-top: 24px;
+    }
+
+    p {
+      margin-bottom: 14px;
+      font-size: 0.95rem;
+      color: #334155;
+    }
+
+    /* 手順 (番号付き) と箇条書き */
+    .step-list,
+    .point-list {
+      padding-left: 26px;
+      margin-bottom: 18px;
+      font-size: 0.95rem;
+      color: #334155;
+    }
+
+    .step-list li,
+    .point-list li {
+      margin-bottom: 9px;
+    }
+
+    /* 画面上の文言 (ボタン名・見出しなど) */
+    .ui-label {
+      display: inline-block;
+      padding: 0 7px;
+      margin: 0 2px;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 5px;
+      font-weight: 600;
+      font-size: 0.9em;
+      color: #0f172a;
+      line-height: 1.5;
+    }
+
+    /* ----- 図 ----- */
+    .figure-box {
+      margin: 22px 0;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #f8fafc;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+    }
+
+    .figure-box img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .figure-caption {
+      padding: 10px 16px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      background: #ffffff;
+      border-top: 1px solid var(--border);
+      font-weight: 500;
+      text-align: center;
+    }
+
+    /* ----- 注意書き ----- */
+    .alert-box {
+      padding: 16px 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      font-size: 0.92rem;
+      line-height: 1.7;
+    }
+
+    .alert-important {
+      background-color: #fff1f2;
+      border-left: 4px solid var(--accent-red);
+      color: #9f1239;
+    }
+
+    .alert-tip {
+      background-color: #ecfdf5;
+      border-left: 4px solid var(--accent-green);
+      color: #065f46;
+    }
+
+    .alert-note {
+      background-color: var(--primary-light);
+      border-left: 4px solid var(--primary);
+      color: #075985;
+    }
+
+    .alert-title {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    /* ----- 表 ----- */
+    .table-container {
+      overflow-x: auto;
+      margin: 20px 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f1f5f9;
+      color: #334155;
+      font-weight: 600;
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--border);
+      color: #475569;
+      vertical-align: top;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .col-num {
+      width: 70px;
+      text-align: center;
+    }
+
+    .col-name {
+      width: 230px;
+    }
+
+    td.col-num {
+      text-align: center;
+    }
+
+    /* 図の中の番号に対応するバッジ */
+    .num-badge {
+      display: inline-block;
+      width: 22px;
+      height: 22px;
+      background: #dc2626;
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 0.8rem;
+      text-align: center;
+      line-height: 22px;
+      border-radius: 50%;
+      margin: 0 3px;
+    }
+
+    /* ----- FAQ ----- */
+    .faq-item {
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .faq-item:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .faq-q {
+      font-weight: 700;
+      color: #0f172a;
+      font-size: 1rem;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .faq-q::before {
+      content: "Q.";
+      color: var(--primary);
+      font-size: 1.1rem;
+    }
+
+    .faq-a {
+      font-size: 0.92rem;
+      color: #334155;
+      padding-left: 28px;
+      line-height: 1.7;
+    }
+
+    /* ----- 印刷 (A4) ----- */
+    @media print {
+      body {
+        background: #ffffff;
+        display: block;
+      }
+
+      .sidebar {
+        display: none !important;
+      }
+
+      .main-wrapper {
+        padding: 0 !important;
+        max-width: 100% !important;
+      }
+
+      .header-banner {
+        background: #075985 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: none;
+      }
+
+      .section {
+        border: none !important;
+        box-shadow: none !important;
+        padding: 10px 0 !important;
+        margin-bottom: 20px !important;
+      }
+
+      h2,
+      h3 {
+        page-break-after: avoid;
+      }
+
+      .figure-box,
+      .alert-box,
+      .faq-item,
+      tr {
+        page-break-inside: avoid;
+      }
+
+      .figure-box {
+        box-shadow: none !important;
+        border: 1px solid #cccccc !important;
+      }
+
+      .figure-box img {
+        max-height: 520px;
+        object-fit: contain;
+      }
+
+      .num-badge,
+      .ui-label,
+      .alert-box,
+      th {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+
+    /* ----- 狭い画面 ----- */
+    @media (max-width: 900px) {
+      body {
+        flex-direction: column;
+      }
+
+      .sidebar {
+        width: 100%;
+        height: auto;
+        position: relative;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .main-wrapper {
+        padding: 24px 16px;
+      }
+
+      .section {
+        padding: 22px 18px;
+      }
+
+      .header-banner {
+        padding: 26px 22px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 目次 -->
+  <aside class="sidebar">
+    <div class="sidebar-title">📖 目次</div>
+    <ul class="sidebar-nav">
+      <li><a href="#section-1">1. システム概要と画面構成</a></li>
+      <li><a href="#section-2">2. 使い始める前に</a></li>
+      <li><a href="#section-2-1" class="sub-item">2.1 用意するファイル</a></li>
+      <li><a href="#section-2-2" class="sub-item">2.2 年度の考え方</a></li>
+      <li><a href="#section-2-3" class="sub-item">2.3 作業の流れ</a></li>
+      <li><a href="#section-3">3. 電力: データの読み込みと単月の確認</a></li>
+      <li><a href="#section-3-1" class="sub-item">3.1 ファイルの投入</a></li>
+      <li><a href="#section-3-2" class="sub-item">3.2 読み込み結果の確認</a></li>
+      <li><a href="#section-3-3" class="sub-item">3.3 日別のグラフと集計表</a></li>
+      <li><a href="#section-4">4. 電力: 年間推移の確認</a></li>
+      <li><a href="#section-4-1" class="sub-item">4.1 品種別分析</a></li>
+      <li><a href="#section-4-2" class="sub-item">4.2 設備別分析</a></li>
+      <li><a href="#section-4-3" class="sub-item">4.3 グラフの目盛り設定</a></li>
+      <li><a href="#section-5">5. 燃料エネルギー</a></li>
+      <li><a href="#section-5-1" class="sub-item">5.1 画面の見方</a></li>
+      <li><a href="#section-5-2" class="sub-item">5.2 評価項目と集計表</a></li>
+      <li><a href="#section-5-3" class="sub-item">5.3 「---」と表示される場合</a></li>
+      <li><a href="#section-6">6. トータルエネルギー</a></li>
+      <li><a href="#section-6-1" class="sub-item">6.1 月別の表示</a></li>
+      <li><a href="#section-6-2" class="sub-item">6.2 年度推移の表示</a></li>
+      <li><a href="#section-6-3" class="sub-item">6.3 前年度比と太陽光発電の参考表</a></li>
+      <li><a href="#section-7">7. スプレッドシートへの反映と Excel エクスポート</a></li>
+      <li><a href="#section-7-1" class="sub-item">7.1 反映状況の見方</a></li>
+      <li><a href="#section-7-2" class="sub-item">7.2 反映の手順</a></li>
+      <li><a href="#section-7-3" class="sub-item">7.3 Excel エクスポート</a></li>
+      <li><a href="#section-8">8. 管理者編: 更新と保守の要点</a></li>
+      <li><a href="#section-8-1" class="sub-item">8.1 Apps Script に置くファイル</a></li>
+      <li><a href="#section-8-2" class="sub-item">8.2 更新するとき</a></li>
+      <li><a href="#section-8-3" class="sub-item">8.3 スプレッドシートのシート</a></li>
+      <li><a href="#section-9">9. 付録・FAQ</a></li>
+      <li><a href="#section-9-1" class="sub-item">9.1 用語</a></li>
+      <li><a href="#section-9-2" class="sub-item">9.2 よくある質問</a></li>
+    </ul>
+
+    <button class="print-btn" onclick="window.print()">🖨️ マニュアルを印刷 / PDF出力</button>
+  </aside>
+
+  <main class="main-wrapper">
+
+    <header class="header-banner">
+      <h1>工場エネルギー使用量集計・分析システム 操作マニュアル</h1>
+      <p>電力ロガーのデータと、エネルギー計算表・月報PET の Excel を読み込み、電力・燃料エネルギー・トータルエネルギーの使用量をグラフと表で確認するための手引きです。実際の画面と、図の中の番号（<span class="num-badge">1</span><span class="num-badge">2</span><span class="num-badge">3</span>…）に沿って操作を説明します。</p>
+    </header>
+
+    <!-- ================= 1. システム概要と画面構成 ================= -->
+    <section id="section-1" class="section">
+      <h2>1. システム概要と画面構成</h2>
+      <p>このシステムは、ブラウザにファイルをドラッグ＆ドロップするだけで、工場のエネルギー使用量を集計し、グラフと表で表示します。集計した結果は Google スプレッドシートに保存でき、次に開いたときは保存した内容が自動で表示されます。</p>
+      <p>画面は1ページで、上部のボタンで次の3つを切り替えます。</p>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-name">画面</th>
+              <th>分かること</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>電力</strong></td>
+              <td>電力量を、品種別・設備別・日別に確認できます。操業時間、生産本数、1本あたりの電力量やコストも表示します。</td>
+            </tr>
+            <tr>
+              <td><strong>燃料エネルギー</strong></td>
+              <td>A重油と LNG の熱量と費用を、品種別に確認できます。1本あたり・1分あたりの燃料エネルギーやコストも表示します。</td>
+            </tr>
+            <tr>
+              <td><strong>トータルエネルギー</strong></td>
+              <td>工場全体の生産量、エネルギー使用量（原油換算）、熱量、原単位、CO2排出量を、月別と年度別に確認できます。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="figure-box">
+        <img src="manual_images/01_overview.webp" alt="画面の上部の構成">
+        <div class="figure-caption">【図1-1】画面の上部（電力の「年間推移・品種別分析」を表示した状態）</div>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-num">番号</th>
+              <th class="col-name">名称</th>
+              <th>説明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-num"><span class="num-badge">1</span></td>
+              <td><strong>タイトル</strong></td>
+              <td>システムの名前と、表示している画面の説明です。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">2</span></td>
+              <td><span class="ui-label">マニュアル</span></td>
+              <td>このマニュアルを別のタブで開きます。画面の右上にあります。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">3</span></td>
+              <td><strong>反映状況</strong></td>
+              <td>読み込んだ月数と、スプレッドシートへ反映した月数です（7章）。データを読み込むと表示されます。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">4</span></td>
+              <td><span class="ui-label">目盛り設定</span></td>
+              <td>電力のグラフの縦軸の上限を設定します（4.3）。電力の画面でだけ表示されます。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">5</span></td>
+              <td><span class="ui-label">Excelエクスポート</span></td>
+              <td>スプレッドシートに保存した内容を、Excel ファイルとしてダウンロードします（7.3）。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">6</span></td>
+              <td><span class="ui-label">スプレッドシートへ反映</span></td>
+              <td>表示している画面のデータを、スプレッドシートへ保存します（7.2）。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">7</span></td>
+              <td><strong>画面の切替</strong></td>
+              <td><span class="ui-label">電力</span><span class="ui-label">燃料エネルギー</span><span class="ui-label">トータルエネルギー</span>を切り替えます。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">8</span></td>
+              <td><strong>電力の表示の切替</strong></td>
+              <td>電力の画面でだけ表示されます。<span class="ui-label">年間推移・品種別分析</span><span class="ui-label">年間推移・設備別分析</span><span class="ui-label">単月詳細集約 (日別・1時間)</span>を切り替えます。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ================= 2. 使い始める前に ================= -->
+    <section id="section-2" class="section">
+      <h2>2. 使い始める前に</h2>
+
+      <h3 id="section-2-1">2.1 用意するファイル</h3>
+      <p>このシステムが読み込むファイルは、次の3種類です。画面によって必要なファイルが違います。</p>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>ファイル</th>
+              <th>内容</th>
+              <th>電力</th>
+              <th>燃料エネルギー</th>
+              <th>トータルエネルギー</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>電力ロガーのデータ</strong><br>（TXT / CSV）</td>
+              <td>設備ごとの電力の1分ごとの記録です。1日につき5種類（tag02・04・05・06・07）のファイルがあります。</td>
+              <td>必要</td>
+              <td>操業時間を使う項目に必要</td>
+              <td>不要</td>
+            </tr>
+            <tr>
+              <td><strong>エネルギー計算表</strong><br>（Excel）</td>
+              <td>電気料金、A重油・LNG の熱量と費用、生産数量、CO2排出量などを、年度ごとのシートにまとめたファイルです。</td>
+              <td>電力量単価に使用</td>
+              <td>必要</td>
+              <td>必要</td>
+            </tr>
+            <tr>
+              <td><strong>月報PET</strong><br>（Excel）</td>
+              <td>品種ごとの生産本数を、年度ごとのシートにまとめたファイルです。</td>
+              <td>生産本数に使用</td>
+              <td>必要</td>
+              <td>表示する年度を決めるために必要</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="alert-box alert-tip">
+        <div class="alert-title">💡 Excel は1回投入すれば、3つの画面すべてに反映されます</div>
+        エネルギー計算表と月報PET は、どの画面の投入欄から入れても、すべての画面で使われます。画面ごとに入れ直す必要はありません。
+      </div>
+
+      <h3 id="section-2-2">2.2 年度の考え方</h3>
+      <p>このシステムの年度は、4月から翌年3月までです。たとえば「2024年度」は、2024年4月から2025年3月までを指します。</p>
+      <p>Excel は、対象の年度のシートだけを読みます。シートの名前に年度の数字（例: 2024）が入っている必要があります。</p>
+
+      <div class="alert-box alert-important">
+        <div class="alert-title">⚠️ 燃料エネルギーとトータルエネルギーは、月報PET にシートがある年度だけを表示します</div>
+        エネルギー計算表に古い年度のシートがあっても、月報PET に同じ年度のシートが無ければ、その年度は表示されません。表示したい年度があるときは、その年度のシートを含む月報PET を投入してください。
+      </div>
+
+      <h3 id="section-2-3">2.3 作業の流れ</h3>
+      <ol class="step-list">
+        <li>共有された URL を、ブラウザ（Google Chrome を推奨）で開きます。スプレッドシートに保存済みのデータがあれば、自動で表示されます。</li>
+        <li>電力の画面で、対象の月の電力ロガーのデータと、Excel 2種を投入します（3章）。</li>
+        <li>電力・燃料エネルギー・トータルエネルギーの各画面で、グラフと表を確認します（3〜6章）。</li>
+        <li>画面ごとに<span class="ui-label">スプレッドシートへ反映</span>を押して保存します（7章）。</li>
+      </ol>
+
+      <div class="alert-box alert-note">
+        <div class="alert-title">📌 読み込んだデータは、反映するまで保存されません</div>
+        ファイルから読み込んだデータは、ブラウザを閉じたり、ページを再読み込みしたりすると消えます。残しておきたいデータは、必ずスプレッドシートへ反映してください。
+      </div>
+    </section>
+
+    <!-- ================= 3. 電力: データの読み込みと単月の確認 ================= -->
+    <section id="section-3" class="section">
+      <h2>3. 【電力】データの読み込みと単月の確認</h2>
+      <p>電力のデータは、<span class="ui-label">単月詳細集約 (日別・1時間)</span>の画面で読み込みます。読み込むと、その月の日別のグラフと集計表が表示され、年間推移の画面（4章）にも反映されます。</p>
+
+      <h3 id="section-3-1">3.1 ファイルの投入</h3>
+      <div class="figure-box">
+        <img src="manual_images/02_power_monthly_load.webp" alt="単月詳細集約の画面の上部">
+        <div class="figure-caption">【図3-1】単月詳細集約の画面（ファイルを読み込んだ後）</div>
+      </div>
+
+      <ol class="step-list">
+        <li>画面の切替で<span class="ui-label">電力</span>を選び、<span class="ui-label">単月詳細集約 (日別・1時間)</span>を開きます。</li>
+        <li>投入欄<span class="num-badge">1</span>に、対象の月の電力ロガーのファイルをドラッグ＆ドロップします。月のフォルダごとドロップすることも、投入欄をクリックしてファイルを選ぶこともできます。</li>
+        <li>エネルギー計算表と月報PET も、同じ投入欄に入れます。ロガーのファイルと一緒に入れても、後から Excel だけを入れても構いません。</li>
+        <li>読み込みと集計が終わると、読み込んだ月が自動で表示されます。</li>
+      </ol>
+
+      <div class="alert-box alert-important">
+        <div class="alert-title">⚠️ 同じ月のファイルは、5種類をまとめて投入してください</div>
+        電力ロガーのファイルは、tag02・04・05・06・07 の5種類で1組です。一部の種類だけを投入すると、その月は投入したファイルだけで計算し直され、足りない種類の設備は 0 として集計されます。
+      </div>
+
+      <div class="alert-box alert-tip">
+        <div class="alert-title">💡 複数の月をまとめて投入できます</div>
+        数か月分のファイルやフォルダを一度に投入すると、月ごとに自動で分けて集計します。量が多いときは集計に時間がかかるため、動作が重い場合は数か月ずつに分けてください。
+      </div>
+
+      <h3 id="section-3-2">3.2 読み込み結果の確認</h3>
+      <ul class="point-list">
+        <li><strong>ファイルの種類の表示<span class="num-badge">2</span>:</strong> 読み込めた種類に色が付きます。ロガーの5種類（tag02〜tag07）と、<span class="ui-label">かつらぎ計算表 (電気代)</span><span class="ui-label">月報PET (生産本数)</span>のすべてに色が付いていることを確認してください。</li>
+        <li><strong>表示する月の選択<span class="num-badge">3</span>:</strong> <span class="ui-label">表示対象年月:</span>で、読み込み済みの月を切り替えます。</li>
+        <li><strong>月の集計値<span class="num-badge">4</span>:</strong> <span class="ui-label">月間総電力量</span><span class="ui-label">実充填操業時間</span><span class="ui-label">水運転時間</span><span class="ui-label">電力量単価</span>などを表示します。</li>
+      </ul>
+
+      <div class="alert-box alert-note">
+        <div class="alert-title">📌 Excel から値を取れなかった月は、画面の右下に警告が出ます</div>
+        月報PET に対象の年度のシートが無い、または対象の月の本数が入力されていない場合は、その月の生産本数を 0 として集計します。エネルギー計算表から電気料金を取れなかった月は、あらかじめ決められた単価で計算します。どちらの場合も、取れなかった月を知らせる警告が表示されます。
+      </div>
+
+      <h3 id="section-3-3">3.3 日別のグラフと集計表</h3>
+      <div class="figure-box">
+        <img src="manual_images/03_power_monthly_detail.webp" alt="日別のグラフと集計表">
+        <div class="figure-caption">【図3-2】日別のグラフと集計表</div>
+      </div>
+
+      <ul class="point-list">
+        <li><strong><span class="ui-label">日別電力使用量推移 (kWh)</span><span class="num-badge">1</span>:</strong> 日ごとの電力量です。棒は工程ごとの内訳、折れ線は総電力です。</li>
+        <li><strong><span class="ui-label">工程別電力比率</span><span class="num-badge">2</span>:</strong> その月の電力量の工程ごとの割合です。内側の円が工程、外側の円がユーティリティの内訳（コンプレッサー、ボイラーなど）です。</li>
+        <li><strong><span class="ui-label">日別工程別集計データ</span><span class="num-badge">3</span>:</strong> 日ごとの工程別の電力量と、実充填・水運転の時間（分）です。表の中をスクロールすると、月末まで見られます。</li>
+      </ul>
+    </section>
+
+    <!-- ================= 4. 電力: 年間推移の確認 ================= -->
+    <section id="section-4" class="section">
+      <h2>4. 【電力】年間推移の確認</h2>
+      <p>読み込んだ月のデータを年度ごとにまとめて、月別の推移を確認します。データのある月だけで集計するため、年度の途中でも表示できます。</p>
+
+      <h3 id="section-4-1">4.1 品種別分析</h3>
+      <div class="figure-box">
+        <img src="manual_images/04_power_annual_variety.webp" alt="年間推移・品種別分析の画面">
+        <div class="figure-caption">【図4-1】年間推移・品種別分析の画面</div>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-num">番号</th>
+              <th class="col-name">名称</th>
+              <th>説明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-num"><span class="num-badge">1</span></td>
+              <td><span class="ui-label">対象年度:</span></td>
+              <td>表示する年度を選びます。データを読み込んだ年度だけが選べます。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">2</span></td>
+              <td><span class="ui-label">操業評価モード:</span></td>
+              <td>集計の対象にする時間を選びます。<span class="ui-label">水運転＋実充填</span><span class="ui-label">水運転のみ</span><span class="ui-label">実充填のみ</span>の3つです。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">3</span></td>
+              <td><span class="ui-label">表示指標:</span></td>
+              <td>グラフと表に表示する項目を、下の8種類から選びます。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">4</span></td>
+              <td><strong>年間の集計値</strong></td>
+              <td>選んだ年度・操業評価モードでの、電力量、操業時間、生産本数、1本あたりの電力量です。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">5</span></td>
+              <td><strong>月別の集約グラフ</strong></td>
+              <td>8品種の月別の値です。電力量などの量を表す項目は積み上げ、1本あたり・1分あたりの項目は品種ごとの棒と全体平均の折れ線で表示します。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">6</span></td>
+              <td><strong>品種別の推移</strong></td>
+              <td>品種ごとの月別の推移を、折れ線で表示します。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">7</span></td>
+              <td><strong>年間月別実績集計表</strong></td>
+              <td>4月から3月までの、累計・月計・8品種の値と、年間の合計です。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>表示指標で選べる項目は、次の8種類です。</p>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>項目</th>
+              <th>内容</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><span class="ui-label">電力量 (kWh)</span></td><td>品種ごとの電力量です。</td></tr>
+            <tr><td><span class="ui-label">操業時間 (分)</span></td><td>品種ごとの操業時間です。</td></tr>
+            <tr><td><span class="ui-label">生産本数 (本)</span></td><td>月報PET の品種ごとの生産本数です。</td></tr>
+            <tr><td><span class="ui-label">単位本電力量 (kWh/本)</span></td><td>1本あたりの電力量です。</td></tr>
+            <tr><td><span class="ui-label">単位時間電力量 (kWh/分)</span></td><td>操業1分あたりの電力量です。</td></tr>
+            <tr><td><span class="ui-label">電力コスト (円)</span></td><td>電力量に、その月の電力量単価を掛けた金額です。</td></tr>
+            <tr><td><span class="ui-label">単位本コスト (円/本)</span></td><td>1本あたりの電力コストです。</td></tr>
+            <tr><td><span class="ui-label">単位時間コスト (円/分)</span></td><td>操業1分あたりの電力コストです。</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="section-4-2">4.2 設備別分析</h3>
+      <div class="figure-box">
+        <img src="manual_images/05_power_annual_equipment.webp" alt="年間推移・設備別分析の画面">
+        <div class="figure-caption">【図4-2】年間推移・設備別分析の画面</div>
+      </div>
+
+      <ul class="point-list">
+        <li><strong><span class="ui-label">グラフ系列モード:</span><span class="num-badge">1</span>:</strong> <span class="ui-label">ユーティリティ統合</span>は、ユーティリティ・調合抽出・供給・充填・包装の5工程で表示します。<span class="ui-label">設備詳細内訳</span>は、ユーティリティをコンプレッサー・ボイラー・純水装置・排水処理・チラーに分けて表示します。</li>
+        <li><strong>年間の集計値<span class="num-badge">2</span>:</strong> 年間の総電力量、ユーティリティの電力量と割合、電力量が最も大きい設備、実充填・水運転の時間です。</li>
+        <li><strong><span class="ui-label">月別設備別・工程別電力推移 (kWh)</span><span class="num-badge">3</span>:</strong> 月ごとの電力量を、工程・設備ごとに積み上げて表示します。折れ線は総電力です。</li>
+        <li><strong><span class="ui-label">年間設備別電力比率 (多層円弧内訳)</span><span class="num-badge">4</span>:</strong> 年間の電力量の、工程・設備ごとの割合です。</li>
+        <li><strong><span class="ui-label">年間推移・設備別集計データ表</span><span class="num-badge">5</span>:</strong> 工程・設備ごとの年間累計、構成比、月別の値です。</li>
+      </ul>
+
+      <h3 id="section-4-3">4.3 グラフの目盛り設定</h3>
+      <p>電力のグラフの縦軸の上限は、<span class="ui-label">目盛り設定</span>で変えられます。月や年度を比べやすいように、上限をそろえたいときに使います。</p>
+
+      <div class="figure-box">
+        <img src="manual_images/06_scale_setting.webp" alt="目盛り設定の画面">
+        <div class="figure-caption">【図4-3】目盛り設定の画面（固定値方式を選んだ状態）</div>
+      </div>
+
+      <ul class="point-list">
+        <li><strong>方式の選択<span class="num-badge">1</span>:</strong> <span class="ui-label">自動最適化方式</span>は、読み込んだすべてのデータの最大値から上限を決めます。月や年度を切り替えても目盛りは変わりません。通常はこちらを使います。<span class="ui-label">固定値方式</span>は、入力した値を上限にします。</li>
+        <li><strong>固定値の入力<span class="num-badge">2</span>:</strong> 固定値方式のときに使う上限を、グラフごと・項目ごとに入力します。</li>
+        <li><strong><span class="ui-label">初期値に戻す</span><span class="num-badge">3</span>:</strong> 設定を最初の状態に戻します。</li>
+        <li><strong><span class="ui-label">保存してグラフに適用</span><span class="num-badge">4</span>:</strong> 設定を保存して、グラフに反映します。</li>
+      </ul>
+
+      <div class="alert-box alert-note">
+        <div class="alert-title">📌 目盛りの設定は、使っているブラウザに保存されます</div>
+        設定はスプレッドシートではなく、操作しているパソコンのブラウザに保存されます。別のパソコンや別のブラウザでは、それぞれ設定が必要です。燃料エネルギーとトータルエネルギーのグラフは、常に自動で上限を決めます。
+      </div>
+    </section>
+
+    <!-- ================= 5. 燃料エネルギー ================= -->
+    <section id="section-5" class="section">
+      <h2>5. 【燃料エネルギー】</h2>
+      <p>A重油と LNG を合わせた燃料エネルギー（熱量）と費用を、品種別に表示します。月ごとの燃料エネルギーは、品種ごとの液量（本数 × 1本あたりの容量）の割合で、8品種に分けています。</p>
+
+      <h3 id="section-5-1">5.1 画面の見方</h3>
+      <div class="figure-box">
+        <img src="manual_images/07_fuel_main.webp" alt="燃料エネルギーの画面の上部">
+        <div class="figure-caption">【図5-1】燃料エネルギーの画面</div>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-num">番号</th>
+              <th class="col-name">名称</th>
+              <th>説明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-num"><span class="num-badge">1</span></td>
+              <td><strong>投入欄</strong></td>
+              <td>エネルギー計算表と月報PET を投入します。電力の画面で投入済みであれば、あらためて入れる必要はありません。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">2</span></td>
+              <td><strong>データの状況</strong></td>
+              <td>使えるデータに色が付きます。<span class="ui-label">操業時間 (電力側のデータ)</span>は、電力の画面でロガーのデータを読み込んでいる（または保存済みの）ときに色が付きます。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">3</span></td>
+              <td><span class="ui-label">対象年度:</span></td>
+              <td>表示する年度を選びます。月報PET にシートがある年度だけが選べます。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">4</span></td>
+              <td><span class="ui-label">評価項目:</span></td>
+              <td>グラフと表に表示する項目を、8種類から選びます（5.2）。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">5</span></td>
+              <td><strong>年間の集計値</strong></td>
+              <td>年間の燃料エネルギー、燃料コストと平均単価、生産本数、1本あたりの燃料エネルギーです。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">6</span></td>
+              <td><strong>月別の集約グラフ</strong></td>
+              <td>8品種の月別の値です。量を表す項目は積み上げ、1本あたり・1分あたりの項目は品種ごとの棒と全体平均の折れ線で表示します。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">7</span></td>
+              <td><strong>品種別の推移</strong></td>
+              <td>品種ごとの月別の推移を、折れ線で表示します。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="section-5-2">5.2 評価項目と集計表</h3>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>評価項目</th>
+              <th>内容</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><span class="ui-label">燃料エネルギー (MJ)</span></td><td>A重油と LNG の熱量の合計を、品種別に分けた値です。</td></tr>
+            <tr><td><span class="ui-label">操業時間 (分)</span></td><td>品種ごとの操業時間（水運転＋実充填）です。電力の画面のデータを使います。</td></tr>
+            <tr><td><span class="ui-label">生産本数 (本)</span></td><td>月報PET の品種ごとの本数です。</td></tr>
+            <tr><td><span class="ui-label">単位本燃料エネルギー (MJ/本)</span></td><td>1本あたりの燃料エネルギーです。</td></tr>
+            <tr><td><span class="ui-label">単位時間燃料エネルギー (MJ/分)</span></td><td>操業1分あたりの燃料エネルギーです。</td></tr>
+            <tr><td><span class="ui-label">燃料エネルギーコスト (円)</span></td><td>A重油と LNG の購入費用の合計を、品種別に分けた値です。</td></tr>
+            <tr><td><span class="ui-label">単位本コスト (円/本)</span></td><td>1本あたりの燃料コストです。</td></tr>
+            <tr><td><span class="ui-label">単位時間コスト (円/分)</span></td><td>操業1分あたりの燃料コストです。</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="figure-box">
+        <img src="manual_images/08_fuel_tables.webp" alt="燃料エネルギーの集計表">
+        <div class="figure-caption">【図5-2】燃料エネルギーの集計表</div>
+      </div>
+
+      <ul class="point-list">
+        <li><strong>年間月別実績集計表<span class="num-badge">1</span>:</strong> 選んだ評価項目の、累計・月計・8品種の値です。1本あたり・1分あたりの項目の累計は、年度の初めからの合計どうしで計算した値です。</li>
+        <li><strong><span class="ui-label">燃料別の熱量・費用 (月別)</span><span class="num-badge">2</span>:</strong> エネルギー計算表から読んだ、A重油と LNG の熱量と購入費用、それぞれの合計、燃料の単価です。</li>
+      </ul>
+
+      <div class="alert-box alert-note">
+        <div class="alert-title">📌 費用は、購入した月に計上されます</div>
+        熱量は使った月の値ですが、費用は購入した月の値です。そのため、燃料の単価は月によって大きく変わり、購入の無い月は A重油の費用が 0 になります。月ごとの単価よりも、年間の平均単価を目安にしてください。
+      </div>
+
+      <h3 id="section-5-3">5.3 「---」と表示される場合</h3>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>表示</th>
+              <th>原因</th>
+              <th>対処</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>品種別の値と、1本あたりの項目が「---」になり、グラフが灰色の棒になる</td>
+              <td>月報PET で、その月の品種別の本数が入力されていません。</td>
+              <td>月報PET に本数を入力して、投入し直してください。月計は表示されます。</td>
+            </tr>
+            <tr>
+              <td>操業時間と、1分あたりの項目が「---」になる</td>
+              <td>その月の電力のデータがありません。</td>
+              <td>電力の画面で、その月のロガーのデータを投入してください（3章）。</td>
+            </tr>
+            <tr>
+              <td>画面に何も表示されない</td>
+              <td>エネルギー計算表と月報PET の両方が読み込まれていません。</td>
+              <td>両方の Excel を投入してください。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ================= 6. トータルエネルギー ================= -->
+    <section id="section-6" class="section">
+      <h2>6. 【トータルエネルギー】</h2>
+      <p>エネルギー計算表にまとめられている、工場全体の生産量、エネルギー使用量、熱量、原単位、CO2排出量を表示します。値はエネルギー計算表で計算されたものをそのまま使い、原単位などの割り算だけをこのシステムで行います。</p>
+
+      <h3 id="section-6-1">6.1 月別の表示</h3>
+      <div class="figure-box">
+        <img src="manual_images/09_total_monthly.webp" alt="トータルエネルギーの画面（月別）">
+        <div class="figure-caption">【図6-1】トータルエネルギーの画面（月別）</div>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-num">番号</th>
+              <th class="col-name">名称</th>
+              <th>説明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-num"><span class="num-badge">1</span></td>
+              <td><strong>投入欄</strong></td>
+              <td>エネルギー計算表と月報PET を投入します。他の画面で投入済みであれば、あらためて入れる必要はありません。月報PET は、表示する年度を決めるために使います。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">2</span></td>
+              <td><span class="ui-label">対象年度:</span></td>
+              <td>表示する年度を選びます。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">3</span></td>
+              <td><span class="ui-label">表示:</span></td>
+              <td><span class="ui-label">月別</span>と<span class="ui-label">年度推移</span>を切り替えます。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">4</span></td>
+              <td><strong>年間の集計値</strong></td>
+              <td>対象年度の、年間生産量、エネルギー使用量（原油換算）、原単位、CO2排出量と、それぞれの前年度比です（6.3）。</td>
+            </tr>
+            <tr>
+              <td class="col-num"><span class="num-badge">5</span></td>
+              <td><strong>4つのグラフ</strong></td>
+              <td>下の表の4つのグラフを表示します。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>グラフ</th>
+              <th>内容</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><span class="ui-label">生産量＆エネルギー使用量推移</span></td><td>生産数量（千ケース、左の目盛り）と、エネルギー使用量（原油換算 kl、右の目盛り）の推移です。</td></tr>
+            <tr><td><span class="ui-label">熱量推移</span></td><td>A重油・LNG・電気の熱量（GJ）を積み上げて表示します。</td></tr>
+            <tr><td><span class="ui-label">原単位推移</span></td><td>生産数量1千ケースあたりのエネルギー使用量（原油換算 kl）です。</td></tr>
+            <tr><td><span class="ui-label">CO2排出量推移</span></td><td>棒は A重油・LNG・電気の CO2排出量（t-CO2、左の目盛り）、折れ線は生産液量 1kl あたりの CO2排出量（kg-CO2/kl、右の目盛り）です。</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>グラフの下の集計表には、月ごとの生産数量、熱量、原油換算量、原単位、CO2排出量と、年間の合計を表示します。<span class="ui-label">原単位 累計</span>の列は、年度の初めからその月までの合計で計算した原単位です。</p>
+
+      <h3 id="section-6-2">6.2 年度推移の表示</h3>
+      <p><span class="ui-label">年度推移</span>を選ぶと、同じ4つのグラフと表を、年度ごとの年間の値で表示します。</p>
+
+      <div class="figure-box">
+        <img src="manual_images/10_total_yearly.webp" alt="トータルエネルギーの画面（年度推移）">
+        <div class="figure-caption">【図6-2】トータルエネルギーの画面（年度推移）</div>
+      </div>
+
+      <ul class="point-list">
+        <li><strong>表示の切替<span class="num-badge">1</span>:</strong> <span class="ui-label">年度推移</span>を選んだ状態です。上の集計値は、<span class="ui-label">対象年度:</span>で選んだ年度の値のままです。</li>
+        <li><strong>4つのグラフ<span class="num-badge">2</span>:</strong> 横軸が年度になります。</li>
+        <li><strong>年度推移集計表<span class="num-badge">3</span>:</strong> 年度ごとの年間の値です。<span class="ui-label">原単位 前年度比</span>の列に、前の年度に対する原単位の割合を表示します。</li>
+        <li><strong>太陽光発電の参考表<span class="num-badge">4</span>:</strong> 6.3 を参照してください。</li>
+      </ul>
+
+      <div class="alert-box alert-important">
+        <div class="alert-title">⚠️ 入力の途中の年度は、月数を確認してください</div>
+        12か月分がそろっていない年度は、「2026年度 (6ヶ月)」のように月数が付きます。生産数量、熱量、CO2排出量などの量は、その月数分の合計のため、他の年度より小さく表示されます。原単位と 1kl あたりの CO2排出量は、途中の年度でもそのまま比べられます。
+      </div>
+
+      <h3 id="section-6-3">6.3 前年度比と太陽光発電の参考表</h3>
+      <ul class="point-list">
+        <li><strong>前年度比:</strong> 前の年度も表示されている場合に表示します。表示されている中で最も古い年度は「---」になります。</li>
+        <li><strong>量の前年度比:</strong> 年間生産量とエネルギー使用量の前年度比は、その年度と前の年度の両方が12か月そろっている場合だけ表示します。</li>
+        <li><strong><span class="ui-label">参考: 太陽光発電 無しの想定値</span>:</strong> 太陽光発電のデータがある年度に表示します。電気の熱量と CO2排出量は購入した電力の分で、太陽光で発電した分は含まれていません。この表では、太陽光の分を足し戻した場合の熱量、原油換算量、原単位、CO2排出量を確認できます。</li>
+      </ul>
+    </section>
+
+    <!-- ================= 7. スプレッドシートへの反映と Excel エクスポート ================= -->
+    <section id="section-7" class="section">
+      <h2>7. スプレッドシートへの反映と Excel エクスポート</h2>
+      <p>読み込んだデータは、スプレッドシートへ反映すると保存されます。保存したデータは、次にシステムを開いたときに自動で表示されます。</p>
+
+      <div class="figure-box">
+        <img src="manual_images/11_sync_header.webp" alt="反映状況とボタン">
+        <div class="figure-caption">【図7-1】反映状況の表示とボタン（電力のデータを読み込んだ直後）</div>
+      </div>
+
+      <h3 id="section-7-1">7.1 反映状況の見方</h3>
+      <p>反映状況<span class="num-badge">1</span>には、表示している画面のデータについて、読み込んだ月数と、まだ反映していない月数を表示します。</p>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>表示の例</th>
+              <th>意味</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>読込済: 計 12ヶ月 (未反映: 12ヶ月 / 反映済: 0ヶ月)</td>
+              <td>12か月分を読み込んでいて、まだ1か月も保存していません。</td>
+            </tr>
+            <tr>
+              <td>読込済: 計 12ヶ月 (全 12ヶ月 反映済み)</td>
+              <td>読み込んだ12か月分が、すべて保存されています。</td>
+            </tr>
+            <tr>
+              <td>燃料 読込済: …　／　トータル 読込済: …</td>
+              <td>燃料エネルギー、トータルエネルギーの画面を表示しているときは、その画面のデータの状況を表示します。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="section-7-2">7.2 反映の手順</h3>
+      <ol class="step-list">
+        <li>画面の切替<span class="num-badge">4</span>で、保存したいデータの画面（電力・燃料エネルギー・トータルエネルギー）を表示します。</li>
+        <li><span class="ui-label">スプレッドシートへ反映</span><span class="num-badge">3</span>を押します。まだ反映していない月だけが保存されます。</li>
+        <li>保存が終わると、画面の右下に完了の知らせが表示され、反映状況が「反映済み」に変わります。</li>
+        <li>他の画面のデータも保存する場合は、画面を切り替えて、同じ操作を繰り返します。</li>
+      </ol>
+
+      <div class="alert-box alert-important">
+        <div class="alert-title">⚠️ 反映は、画面ごとに行います</div>
+        <span class="ui-label">スプレッドシートへ反映</span>は、表示している画面のデータだけを保存します。電力・燃料エネルギー・トータルエネルギーの3つすべてを保存するには、それぞれの画面で1回ずつ押してください。
+      </div>
+
+      <ul class="point-list">
+        <li><strong>すべて反映済みのときに押した場合:</strong> 全部の月を上書きしてよいかを確認する画面が出ます。保存し直したいときだけ「OK」を押してください。</li>
+        <li><strong>「未反映」に戻る場合:</strong> 反映した後でも、ロガーのファイルを読み直した月や、Excel を投入して本数・単価・熱量などの値が変わった月は、未反映に戻ります。内容を確認して、もう一度反映してください。</li>
+      </ul>
+
+      <h3 id="section-7-3">7.3 Excel エクスポート</h3>
+      <p><span class="ui-label">Excelエクスポート</span><span class="num-badge">2</span>を押すと、スプレッドシートに保存されている内容を、Excel ファイルとしてダウンロードします。どの画面から押しても、電力・燃料エネルギー・トータルエネルギーのシートをまとめて出力します。</p>
+
+      <div class="alert-box alert-note">
+        <div class="alert-title">📌 出力されるのは、反映済みのデータだけです</div>
+        まだ反映していないデータは、Excel ファイルに含まれません。先に反映を済ませてからエクスポートしてください。データの無いシートは出力されません。
+      </div>
+    </section>
+
+    <!-- ================= 8. 管理者編 ================= -->
+    <section id="section-8" class="section">
+      <h2>8. 【管理者編】更新と保守の要点</h2>
+      <p>システムを更新・保守する方に向けた要点です。初回のセットアップなどの詳しい手順は、開発用の資料「セットアップ・運用手順書」を参照してください。</p>
+
+      <h3 id="section-8-1">8.1 Apps Script に置くファイル</h3>
+      <p>このシステムは、スプレッドシートに付属する Apps Script 上で動きます。Apps Script に置くファイルは、次の4つです。</p>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Apps Script 上の名前</th>
+              <th>種類</th>
+              <th>役割</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Code.gs</td><td>スクリプト</td><td>画面の表示と、スプレッドシートへの保存・読み込みを行います。</td></tr>
+            <tr><td>Config.gs</td><td>スクリプト</td><td>シートの名前や列などの設定です。</td></tr>
+            <tr><td>index.html</td><td>HTML</td><td>システムの画面です。</td></tr>
+            <tr><td>manual.html</td><td>HTML</td><td>このマニュアルです。</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="section-8-2">8.2 更新するとき</h3>
+      <ol class="step-list">
+        <li>スプレッドシートのメニューの「拡張機能」から「Apps Script」を開きます。</li>
+        <li>変更のあったファイルを開き、中身をすべて新しい内容に貼り替えて保存します。</li>
+        <li>右上の「デプロイ」から「デプロイを管理」を開き、新しいバージョンとして公開し直します。</li>
+        <li>システムを開き直して、保存済みのデータが表示されること、反映とエクスポートができることを確認します。</li>
+      </ol>
+
+      <div class="alert-box alert-important">
+        <div class="alert-title">⚠️ 画面とスクリプトは、そろえて更新してください</div>
+        index.html だけを新しくして Code.gs が古いままだと、新しく追加された画面のデータを保存・表示できないことがあります。manual.html を置いていない状態で<span class="ui-label">マニュアル</span>を押すと、エラーの画面になります。
+      </div>
+
+      <h3 id="section-8-3">8.3 スプレッドシートのシート</h3>
+      <p>データは、次の6つのシートに保存されます。シートは、最初に反映したときに自動で作られます。</p>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>シート</th>
+              <th>内容</th>
+              <th>単位</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>1時間集計(ALL)</td><td>電力の、設備ごとの1時間ごとの電力量と操業時間です。画面には表示しません。</td><td>1時間に1行</td></tr>
+            <tr><td>日別集約</td><td>電力の、工程ごとの日別の電力量と操業時間です。</td><td>1日に1行</td></tr>
+            <tr><td>KPI評価</td><td>電力の、月ごとの総電力量、操業時間、生産本数、原単位、単価です。</td><td>1か月に1行</td></tr>
+            <tr><td>品種別集約</td><td>電力の、品種ごとの本数、電力量、操業時間です。</td><td>1か月に1行</td></tr>
+            <tr><td>燃料集約</td><td>燃料エネルギーの、A重油・LNG の熱量と費用、品種ごとの本数です。</td><td>1か月に1行</td></tr>
+            <tr><td>トータルエネルギー集約</td><td>トータルエネルギーの、生産数量、熱量、原油換算量、CO2排出量、太陽光発電の値です。</td><td>1か月に1行</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="alert-box alert-important">
+        <div class="alert-title">⚠️ 「1時間集計(ALL)」と「日別集約」は、行の並べ替えや削除をしないでください</div>
+        この2つのシートは、同じ月の行が続けて並んでいることを前提に、月ごとにまとめて上書きします。行を並べ替えたり、途中の行を削除したりすると、上書きする位置がずれます。
+      </div>
+    </section>
+
+    <!-- ================= 9. 付録・FAQ ================= -->
+    <section id="section-9" class="section">
+      <h2>9. 付録・FAQ</h2>
+
+      <h3 id="section-9-1">9.1 用語</h3>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-name">用語</th>
+              <th>意味</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>年度</strong></td><td>4月から翌年3月までの1年間です。</td></tr>
+            <tr><td><strong>実充填・水運転</strong></td><td>充填の設備が動いている時間の区分です。実充填は製品を充填している時間、水運転は水で運転している時間です。</td></tr>
+            <tr><td><strong>操業評価モード</strong></td><td>電力の集計で、どの時間を対象にするかの選択です（水運転＋実充填、水運転のみ、実充填のみ）。</td></tr>
+            <tr><td><strong>原単位</strong></td><td>生産量あたりのエネルギー使用量です。電力では 1本あたりの電力量（kWh/本）、燃料エネルギーでは 1本あたりの熱量（MJ/本）、トータルエネルギーでは 1千ケースあたりの原油換算量（kl/千ケース）を表示します。</td></tr>
+            <tr><td><strong>原油換算</strong></td><td>電気や燃料の熱量を、原油の量（kl）に置き換えて表したものです。種類の違うエネルギーを合計して比べるために使います。</td></tr>
+            <tr><td><strong>GJ・MJ</strong></td><td>熱量の単位です。1 GJ は 1,000 MJ です。</td></tr>
+            <tr><td><strong>t-CO2</strong></td><td>CO2排出量の単位（トン）です。</td></tr>
+            <tr><td><strong>ユーティリティ</strong></td><td>コンプレッサー、ボイラー、純水装置、排水処理、チラーなど、生産を支える共通の設備です。</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="section-9-2">9.2 よくある質問</h3>
+
+      <div class="faq-item">
+        <div class="faq-q">ファイルを投入しても、ファイルの種類の表示に色が付きません。</div>
+        <div class="faq-a">ファイルの種類を判別できていません。電力ロガーのファイルは、出力されたままの名前（AQ + 年月日 + _002 などの番号）で投入してください。Excel は、ファイル名に「エネルギー」「かつらぎ」「月報」「PET」のいずれかが入っている必要があります。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">一部の設備の電力量が 0 になります。</div>
+        <div class="faq-a">その月の電力ロガーのファイルのうち、一部の種類が不足しています。5種類（tag02・04・05・06・07）のファイルをまとめて投入し直してください。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">電力の生産本数や、1本あたりの電力量が 0 になります。</div>
+        <div class="faq-a">月報PET が読み込まれていないか、月報PET に対象の年度のシート、または対象の月の本数がありません。年度は4月から翌年3月までです（例: 2024年1月は 2023年度）。対象の年度のシートを含む月報PET を投入してください。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">燃料エネルギーやトータルエネルギーに、見たい年度が出てきません。</div>
+        <div class="faq-a">この2つの画面は、月報PET に年度のシートがある年度だけを表示します。月報PET に、その年度のシート（名前に年度の数字が入ったシート）があるかを確認してください。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">反映したはずの月が、「未反映」に戻っています。</div>
+        <div class="faq-a">反映した後に、その月のロガーのファイルを読み直したか、Excel を投入して本数・単価・熱量などの値が変わりました。内容を確認して、もう一度<span class="ui-label">スプレッドシートへ反映</span>を押してください。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">Excel エクスポートで、データが無いと表示されます。</div>
+        <div class="faq-a">スプレッドシートに、まだ何も保存されていません。先にデータを反映してから、エクスポートしてください。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">ページを開き直したら、読み込んだデータが消えました。</div>
+        <div class="faq-a">ファイルから読み込んだデータは、スプレッドシートへ反映するまで保存されません。反映したデータは、次に開いたときに自動で表示されます。なお、電力の1時間ごとの値は画面には表示されませんが、スプレッドシートには保存されています。</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">このマニュアルを印刷したい、PDF で保存したい。</div>
+        <div class="faq-a">目次の下の「マニュアルを印刷 / PDF出力」を押してください。印刷の画面で、送信先に「PDF に保存」を選ぶと、PDF ファイルとして保存できます。</div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // 目次のリンクで、ページ内の見出しへ移動する (GAS の画面の中でも確実に移動できるよう、リンク先への移動をここで行う)
+    document.querySelectorAll('.sidebar-nav a[href^="#"]').forEach(function (link) {
+      link.addEventListener('click', function (event) {
+        var target = document.getElementById(link.getAttribute('href').slice(1));
+        if (!target) return;
+        event.preventDefault();
+        target.scrollIntoView();
+      });
+    });
+  </script>
+
+</body>
+</html>

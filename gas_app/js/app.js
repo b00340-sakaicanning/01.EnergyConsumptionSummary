@@ -779,6 +779,11 @@
       exportBtn.addEventListener('click', handleExportExcel);
     }
 
+    const manualBtn = document.getElementById('manualBtn');
+    if (manualBtn) {
+      manualBtn.addEventListener('click', openManualWindow);
+    }
+
     // 6. 単月ファイルドラッグ＆ドロップ
     if (dropzone && fileInput) {
       ['dragenter', 'dragover'].forEach(eventName => {
@@ -810,6 +815,40 @@
         handleFiles(files);
       });
     }
+  }
+
+  /**
+   * 操作マニュアルを別タブで開く
+   * - ローカル開発環境: 同じフォルダの manual.html を開く
+   * - GAS: Webアプリの公開URLに ?page=manual を付けて開く (doGet が manual.html を返す)。
+   *   GAS の画面は枠 (iframe) の中で動くため、公開URLはサーバーから取得する
+   */
+  function openManualWindow(event) {
+    if (event) event.preventDefault();
+
+    const isLocal = window.location.protocol === 'file:' ||
+      window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocal) {
+      window.open('manual.html', '_blank');
+      return;
+    }
+
+    const openWithBaseUrl = (baseUrl) => {
+      const url = baseUrl || window.location.href.split('#')[0];
+      const base = url.replace(/([?&])page=manual(&|$)/, '$1').replace(/[?&]$/, '');
+      window.open(base + (base.indexOf('?') !== -1 ? '&' : '?') + 'page=manual', '_blank');
+    };
+    const canAskServer = typeof google !== 'undefined' && google.script && google.script.run &&
+      typeof google.script.run.getAppUrl === 'function';
+    if (!canAskServer) {
+      // 古い Code.gs (公開URLを返す関数が無い) の場合は、現在のURLから組み立てる
+      openWithBaseUrl(null);
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(url => openWithBaseUrl(url))
+      .withFailureHandler(() => openWithBaseUrl(null))
+      .getAppUrl();
   }
 
   /**

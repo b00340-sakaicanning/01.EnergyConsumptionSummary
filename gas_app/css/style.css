@@ -114,11 +114,63 @@ button, input, select {
   color: var(--text-muted);
 }
 
+/* 反映状況と機能ボタンは、タイトルの下の段に並べる */
 .header-actions {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   flex-wrap: wrap;
+  flex: 1 1 100%;
+}
+
+/* 操作マニュアルを別タブで開くボタン (ヘッダーの右上隅。機能ボタンとは別の段に置く) */
+.manual-link-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.55rem 0.95rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--primary);
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.manual-link-btn:hover {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--primary-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.manual-link-btn:active {
+  transform: translateY(0);
+}
+
+.manual-link-btn .manual-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.manual-link-btn .external-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  color: var(--text-muted);
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.manual-link-btn:hover .external-icon {
+  color: var(--primary-hover);
+  transform: translate(1px, -1px);
 }
 
 /* =========================================================================

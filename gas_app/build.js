@@ -4,6 +4,9 @@
  * 
  * CSS (css/style.css) および 全JavaScript (js/*.js) を index.template.html 内にインライン統合し、
  * GASエディタ側で index.html を貼り付けるだけで100%確実に動作する単一HTMLファイルを生成します。
+ *
+ * あわせて、操作マニュアルの原本 (manual.template.html) の画像 (manual_images/*.webp) を
+ * base64 で埋め込み、GASへ貼り付ける manual.html を生成します (GAS には画像ファイルを置けないため)。
  */
 
 const fs = require('fs');
@@ -70,4 +73,35 @@ function build() {
   console.log(`Success! Generated: ${outputPath} (${(html.length / 1024).toFixed(1)} KB)`);
 }
 
+/**
+ * 操作マニュアル (manual.html) を生成する
+ * manual.template.html の <img src="manual_images/..."> を、画像の中身 (base64) に置き換える
+ */
+function buildManual() {
+  const templatePath = path.join(baseDir, 'manual.template.html');
+  if (!fs.existsSync(templatePath)) {
+    console.warn('Warning: manual.template.html not found. manual.html は生成しません。');
+    return;
+  }
+  console.log('Building gas_app/manual.html (images embedded)...');
+
+  const mimeTypes = { '.webp': 'image/webp', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg' };
+  let imageCount = 0;
+  const html = fs.readFileSync(templatePath, 'utf8').replace(/src="(manual_images\/[^"]+)"/g, (match, relPath) => {
+    const imagePath = path.join(baseDir, relPath);
+    const mimeType = mimeTypes[path.extname(relPath).toLowerCase()];
+    if (!fs.existsSync(imagePath) || !mimeType) {
+      console.error(`Error: マニュアルの画像が見つからないか、対応していない形式です: ${relPath}`);
+      process.exit(1);
+    }
+    imageCount++;
+    return `src="data:${mimeType};base64,${fs.readFileSync(imagePath).toString('base64')}"`;
+  });
+
+  const outputPath = path.join(baseDir, 'manual.html');
+  fs.writeFileSync(outputPath, html, 'utf8');
+  console.log(`Success! Generated: ${outputPath} (${(html.length / 1024).toFixed(1)} KB, images: ${imageCount})`);
+}
+
 build();
+buildManual();
